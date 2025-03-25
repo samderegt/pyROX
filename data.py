@@ -7,8 +7,8 @@ import h5py
 
 import scipy.constants as sc
 
-c2 = 1.438777      # cgs: [cm K]
-e = 4.80320425e-10 # cgs: [cm^3/2 g^1/2 s^-1]
+c2 = 1.438777       # cgs: [cm K]
+e  = 4.80320425e-10 # cgs: [cm^3/2 g^1/2 s^-1]
 
 import itertools
 import pathlib
@@ -22,6 +22,10 @@ from tqdm import tqdm
 from cross_sec import CrossSection
 
 def load_data(conf):
+    if conf.database.lower() == 'cia_hitran':
+        from cia import CIA_HITRAN
+        return CIA_HITRAN(conf)
+
     if conf.database.lower() in ['hitemp', 'hitran']:
         return HITEMP(conf)
     if conf.database.lower() == 'exomol':
@@ -79,7 +83,7 @@ class LineList:
         assert pathlib.Path(self.input_dir).is_dir(), 'input_dir does not exist'
         assert self.output_dir is not None, 'output_dir not given in input-file'
 
-        self.tmp_output_dir = f'{self.output_dir}/tmp/'
+        self.tmp_output_dir    = f'{self.output_dir}/tmp/'
         self.final_output_file = f'{self.output_dir}/{conf.species}.hdf5'
 
         #self.final_output_file = conf.files['final_output']

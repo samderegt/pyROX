@@ -12,7 +12,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        'input_file', type=str, #required=True, 
+        'input_file', type=str, 
         help='Name of input file (e.g. input.example_ExoMol)', 
         )
 
@@ -44,7 +44,7 @@ if __name__ == '__main__':
     if args.download:
         if conf.database.lower() == 'exomol':
             data.ExoMol.download_data(conf)
-        elif conf.database.lower() in ['hitemp', 'hitran']:
+        elif conf.database.lower() in ['hitemp', 'hitran', 'cia_hitran']:
             data.HITEMP.download_data(conf)
         elif conf.database.lower() in ['vald', 'kurucz']:
             data.VALD_Kurucz.download_data(conf)
