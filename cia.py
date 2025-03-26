@@ -7,7 +7,95 @@ from cross_sections import CrossSections
 from utils import sc
 import utils
 
-class CIA_HITRAN(CrossSections):
+class CIA(CrossSections):
+    """
+    Base class for CIA cross-sections.
+    """
+    def __init__(self, config):
+        # Initialise the CrossSections parent class
+        super().__init__(config)
+
+    def save_merged_outputs(self, **kwargs):
+        """
+        Merge the temporary files and save the final output. Same for all CIA classes.
+        """
+
+        print('\nMerging temporary files and saving final output')
+
+        # Ask to overwrite the final output file if it already exists
+        response = ''
+        if not self.final_output_file.exists():
+            response = 'yes'
+
+        while response == '':
+            response = input(f'  Warning: Final output file \"{self.final_output_file}\" already exists. Do you want to overwrite it? (yes/no): ')
+            if response == '':
+                continue
+            elif response.lower() not in ['y', 'yes']:
+                raise FileExistsError(f"Not overwriting final output file '{self.final_output_file}'.")
+
+        # Merge the temporary files
+        self.merge_tmp_outputs(keys_to_merge=['k', 'alpha'])
+
+        # Flip arrays to be ascending in wavelength
+        if np.diff(self.merged_datasets['wave'])[0] < 0:
+            self.merged_datasets['wave']  = self.merged_datasets['wave'][::-1]
+            self.merged_datasets['k']     = self.merged_datasets['k'][::-1]
+            self.merged_datasets['alpha'] = self.merged_datasets['alpha'][::-1]
+
+        # Save the merged data
+        print(f'  Saving final output to \"{self.final_output_file}\"')
+        utils.save_to_hdf5(
+            self.final_output_file, 
+            data=self.merged_datasets, 
+            attrs=self.merged_attrs
+            )
+
+    def plot_merged_outputs(self, cmap='coolwarm', xscale='log', yscale='log', xlim=None, ylim=None, **kwargs):
+        """
+        Plot the merged outputs. Same for all CIA classes.
+        """
+        # Load the merged data
+        self.merged_datasets = utils.read_from_hdf5(
+            self.final_output_file, keys_to_read=['wave', 'T', 'k', 'alpha']
+            )
+
+        print(f'\nPlotting CIA coefficients')
+
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(9,6), nrows=2, sharex=True)
+
+        # Plot for certain temperatures
+        T_to_plot = kwargs.get('T_to_plot', self.merged_datasets['T'])
+        indices_T, T_to_plot = utils.find_nearest(self.merged_datasets['T'], T_to_plot)
+
+        indices_T = np.unique(indices_T)
+        T_to_plot = np.unique(T_to_plot)
+
+        for idx_T, T in zip(indices_T, T_to_plot):
+
+            c = plt.get_cmap(cmap)((T-T_to_plot.min())/(T_to_plot.max()-T_to_plot.min()))
+
+            ax[0].plot(self.merged_datasets['wave'], self.merged_datasets['k'][:,idx_T], c=c, label=f'{T:.0f} K')
+            ax[1].plot(self.merged_datasets['wave'], self.merged_datasets['alpha'][:,idx_T], c=c)
+
+        ax[0].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, ylabel='k [m^5 molecule^-2]')
+        ax[1].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, xlabel='wave [m]', ylabel='alpha [m^-1 molecule^-2]')
+
+        handles, _ = ax[0].get_legend_handles_labels()
+        ncols = 1 + len(handles)//8
+        ax[0].legend(loc='upper right', ncol=ncols, labelcolor='linecolor')
+
+        plt.savefig(self.output_data_dir / 'cia_coeffs.pdf', bbox_inches='tight')
+        plt.close()
+
+    def convert_to_pRT2(self):
+        raise NotImplementedError('Conversion to petitRADTRANS-v2.0 format is not implemented.')
+    
+    def convert_to_pRT3(self):
+        raise NotImplementedError('Conversion to petitRADTRANS-v3.0 format is not implemented.')
+
+class CIA_HITRAN(CIA):
 
     def download_data(self):
         """
@@ -21,17 +109,25 @@ class CIA_HITRAN(CrossSections):
             file = utils.wget_if_not_exist(url, self.config.input_dir)
             files.append(file)
         
-        print()
-        for file in files:
-            print(file)
-                
     def __init__(self, config):
-        
-        print('\nInitialising CIA_HITRAN')
-        super().__init__(config)
 
-    def _read_abs_coeff(self, file):
+        print('-'*60)
+        print('  Collision-Induced Absorption from HITRAN')
+        print('-'*60+'\n')
         
+        super().__init__(config) # Initialise the parent CIA class
+
+    def _read_absorption_coefficients(self, file):
+        """
+        Read absorption coefficients from a HITRAN CIA file.
+        """
+
+        file = pathlib.Path(file)
+        print(f'  Reading from \"{file}\"')
+
+        if not file.exists():
+            raise FileNotFoundError(f'File \"{file}\" not found.')
+
         # Read CIA data
         with open(file, 'r') as f:
             lines = f.readlines()
@@ -78,6 +174,11 @@ class CIA_HITRAN(CrossSections):
         return T_grid, abs_coeff_k, abs_coeff_alpha
 
     def calculate_tmp_outputs(self, **kwargs):
+        """
+        Calculate the CIA coefficients.
+        """
+
+        print('\nCalculating CIA coefficients')
 
         files = getattr(self.config, 'files', None)
         if files is None:
@@ -88,11 +189,9 @@ class CIA_HITRAN(CrossSections):
 
         self.T_grid, self.abs_coeff_k, self.abs_coeff_alpha = [], [], []
         for i, (file, *masks) in enumerate(cia_files):
-            
-            print(f'\nReading CIA data from file \"{file}\"')
 
             # Compute absorption coefficients
-            T_grid, abs_coeff_k, abs_coeff_alpha = self._read_abs_coeff(file)
+            T_grid, abs_coeff_k, abs_coeff_alpha = self._read_absorption_coefficients(file)
 
             if len(masks) != 0:
                 # Remove temperatures outside the range
@@ -126,56 +225,17 @@ class CIA_HITRAN(CrossSections):
                     }
                 )
 
-    def save_merged_outputs(self, *args, **kwargs):
+class CIA_Borysov(CIA):
+    def __init__(self, config):
+        
+        print('\nInitialising CIA_Borysov')
+        super().__init__(config) # Initialise the parent CIA class
 
-        if self.final_output_file.exists():
-            response = input(f"Warning: Final output file '{self.final_output_file}' already exists. Do you want to overwrite it? (yes/no): ")
-            if response.lower() not in ['y', 'yes']:
-                raise FileExistsError(f"Not overwriting final output file '{self.final_output_file}'.")
+        raise NotImplementedError('CIA_Borysov is not implemented.')
 
-        # Merge the temporary files
-        self.merge_tmp_outputs(keys_to_merge=['k', 'alpha'])
+    def download_data(self):
+        raise NotImplementedError('Downloading CIA data is not implemented.')
 
-        # Convert to log10
-        # self.merged_datasets['k'] = np.around(np.log10(self.merged_datasets['k']+1e-250), decimals=3)
-        # self.merged_attrs['k']    = {'units': 'log10(m^5 molecule^-2)'}
-
-        # self.merged_datasets['alpha'] = np.around(np.log10(self.merged_datasets['alpha']+1e-250), decimals=3)
-        # self.merged_attrs['alpha']    = {'units': 'log10(m^-1 molecule^-2)'}
-
-        # Flip arrays to be ascending in wavelength
-        if np.diff(self.merged_datasets['wave'])[0] < 0:
-            self.merged_datasets['wave']  = self.merged_datasets['wave'][::-1]
-            self.merged_datasets['k']     = self.merged_datasets['k'][::-1]
-            self.merged_datasets['alpha'] = self.merged_datasets['alpha'][::-1]
-
-        print(self.merged_attrs)
-
-        # Save the merged data
-        utils.save_to_hdf5(
-            self.final_output_file, 
-            data=self.merged_datasets, 
-            attrs=self.merged_attrs
-            )
-
-    def plot_merged_outputs(self, *args, **kwargs):
-
-        # Load the merged data
-        self.merged_datasets = utils.read_from_hdf5(
-            self.final_output_file, keys_to_read=['wave', 'T', 'k', 'alpha']
-            )
-
-        import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(figsize=(12,6), nrows=2, sharex=True)
-
-        for i, T_i in enumerate(self.merged_datasets['T']):
-            c_i = plt.get_cmap('RdBu_r')(T_i/self.merged_datasets['T'].max())
-
-            ax[0].plot(1e6*self.merged_datasets['wave'], self.merged_datasets['k'][:,i], c=c_i, label=f'{T_i} K')
-            ax[1].plot(1e6*self.merged_datasets['wave'], self.merged_datasets['alpha'][:,i], c=c_i)
-
-        ax[0].set(xscale='log', yscale='log', ylabel='k [m^5 molecule^-2]')
-        ax[1].set(xscale='log', yscale='log', xlabel='wave [m]', ylabel='alpha [m^-1 molecule^-2]')
-
-        plt.savefig(self.output_data_dir / 'cia_coeffs.pdf', bbox_inches='tight')
-        plt.close()
+    def calculate_tmp_outputs(self, **kwargs):
+        raise NotImplementedError('Calculating CIA coefficients is not implemented.')
+    

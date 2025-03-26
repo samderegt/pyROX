@@ -31,8 +31,10 @@ def wget_if_not_exist(url, out_dir, out_name=None):
         out_name = pathlib.Path(out_dir) / url.split('/')[-1]
 
     if pathlib.Path(out_name).is_file():
-        print(f'File \"{out_name}\" already exists, skipping download')
+        print(f'  File \"{out_name}\" already exists, skipping download')
         return str(out_name)
+    else:
+        print(f'  Downloading file from \"{url}\"')
     
     # Download and rename
     tmp_file = wget.download(url, out=str(out_dir))
@@ -90,9 +92,16 @@ def read_from_hdf5(file, keys_to_read, return_attrs=False):
 
     return datasets
 
-def units_warning(config):
+def print_welcome_message():
+    """
+    Print a welcome message.
+    """
 
-    import warnings
+    print('\n'+'='*80)
+    print('  Welcome to pyROX: Rapid Opacity X-sections for Python')
+    print('='*80+'\n')
+
+def units_warning(config):
 
     default_units = {
         'mass': 'amu',
@@ -106,14 +115,29 @@ def units_warning(config):
         'global_cutoff': 'cm^1 molecule^-1',
     }
 
-    print()
+    keys_units_to_warn = []
     for key in dir(config):
         unit = default_units.get(key, None)
         if unit is None:
             continue
 
-        warnings.warn(f'Please make sure that \"{key}\" is given in the expected units of {unit}.')
-    print()
+        keys_units_to_warn.append((key, unit))
+
+    import warnings
+    warnings.warn('Please make sure that the following parameters are given in the expected units:')
+    for key, unit in keys_units_to_warn:
+        print(f'  - {key} [{unit}]')
+
+def find_nearest(a, b):
+
+    a_is_array = isinstance(a, (list, tuple, np.ndarray))
+    b_is_array = isinstance(b, (list, tuple, np.ndarray))
+
+    if a_is_array and b_is_array:
+        idx = np.abs(np.asarray(a)[:,None]-np.asarray(b)[None,:]).argmin(axis=0)
+    else:
+        idx = np.abs(a-b).argmin()
+    return idx, a[idx]
 
 class Broaden_Gharib_Nezhad_ea_2021:
     """

@@ -85,12 +85,10 @@ class CrossSections:
         # Check if the outputs should be summed
         sum_outputs = self._check_if_sum_outputs()
         
-        print('\nCombining temporary cross-sections')
-        
         # Select all temporary files
         tmp_files = list(self.tmp_output_dir.glob('*.hdf5'))
         if len(tmp_files) == 0:
-            raise FileNotFoundError("No temporary cross-section files found.")
+            raise FileNotFoundError(f'No temporary output files found in \"{self.tmp_output_dir}\".')
         # Sort by modification date
         tmp_files.sort(key=lambda x: x.stat().st_mtime)
         
