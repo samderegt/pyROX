@@ -43,21 +43,47 @@ class CrossSections:
 
         # Read the common variables
         self._read_from_config(config)
-        
+
         # Get the wavenumber grid
-        self.nu_grid, self.delta_nu, self.nu_min, self.nu_max, self.N_grid = \
-            utils.get_nu_grid(self.wave_min, self.wave_max, self.delta_nu)
+        self._configure_nu_grid()
 
     def download_data(self, *args, **kwargs):
         raise NotImplementedError("This method should be implemented in the subclass.")
 
-    def calculate_cross_sections(self, *args, **kwargs):
+    def calculate_tmp_outputs(self, *args, **kwargs):
         raise NotImplementedError("This method should be implemented in the subclass.")
 
-    def combine_tmp_cross_sections(self, keys_to_read=['xsec'], **kwargs):
+    def plot_merged_outputs(self, *args, **kwargs):
+        raise NotImplementedError("This method should be implemented in the subclass.")
 
-        # Check if the cross-sections should be summed
-        sum_cross_sections = self._check_if_sum_cross_sections()
+    def save_merged_outputs(self, *args, **kwargs):
+        raise NotImplementedError("This method should be implemented in the subclass.")
+
+    def merge_tmp_outputs(self, keys_to_merge=['xsec'], **kwargs):
+        """
+        Combines temporary cross-section files into a single dataset.
+
+        This method reads temporary HDF5 files containing cross-section data,
+        combines them into a single dataset, and returns the combined data along
+        with the associated attributes.
+
+        Parameters:
+        -----------
+        keys_to_merge : list of str, optional
+            List of keys to read from the temporary files. Default is ['xsec'].
+        **kwargs : dict
+            Additional keyword arguments.
+
+        Raises:
+        -------
+        FileNotFoundError
+            If no temporary cross-section files are found.
+        ValueError
+            If the temperature grid is not found in a temporary file.
+        """
+
+        # Check if the outputs should be summed
+        sum_outputs = self._check_if_sum_outputs()
         
         print('\nCombining temporary cross-sections')
         
@@ -69,17 +95,17 @@ class CrossSections:
         tmp_files.sort(key=lambda x: x.stat().st_mtime)
         
         # Check compatibility of files before combining
-        wave_main, P_main, T_main = self._combine_PT_grid(tmp_files, sum_cross_sections)
+        wave_main, P_main, T_main = self._merge_PT_grids(tmp_files, sum_outputs)
 
         # Combine all files into a single array
-        datasets_main = {
+        self.merged_datasets = {
             key: np.zeros((len(wave_main), len(P_main), len(T_main)), dtype=np.float64) 
-            for key in keys_to_read
+            for key in keys_to_merge
             }
         for i, tmp_file in enumerate(tmp_files):
 
             datasets, attrs = utils.read_from_hdf5(
-                tmp_file, keys_to_read=keys_to_read+['P','T','wave'], return_attrs=True
+                tmp_file, keys_to_read=keys_to_merge+['P','T','wave'], return_attrs=True
                 )
 
             # Check if dataset has pressure-axis (line-by-line vs. absorption coeffs)
@@ -97,7 +123,7 @@ class CrossSections:
                 idx_P = np.argwhere((P_main == PT[0])).flatten()[0]
                 idx_T = np.argwhere((T_main == PT[1])).flatten()[0]
 
-                for key in keys_to_read:
+                for key in keys_to_merge:
                     
                     if not has_pressure_axis:
                         # Absorption coefficients
@@ -106,24 +132,35 @@ class CrossSections:
                         # Line-by-line cross-sections
                         dataset_to_add = datasets[key][:,j,k]
                     
-                    if sum_cross_sections:
+                    if sum_outputs:
                         # Sum cross-sections
-                        datasets_main[key][:,idx_P,idx_T] += dataset_to_add
+                        self.merged_datasets[key][:,idx_P,idx_T] += dataset_to_add
                     else:
                         # Avoid summing when only one transition file was used
-                        datasets_main[key][:,idx_P,idx_T] = dataset_to_add
+                        self.merged_datasets[key][:,idx_P,idx_T] = dataset_to_add
 
         # Add the grid-definition
-        datasets_main['wave'] = wave_main
-        datasets_main['T'] = T_main
+        self.merged_datasets['wave'] = wave_main
+        self.merged_datasets['T'] = T_main
         if has_pressure_axis:
-            datasets_main['P'] = P_main
+            self.merged_datasets['P'] = P_main
+        else:
+            for key in keys_to_merge:
+                # Remove the pressure axis
+                self.merged_datasets[key] = np.squeeze(self.merged_datasets[key], axis=1)
 
-        return datasets_main, attrs
+        self.merged_attrs = attrs
 
-    def _combine_PT_grid(self, tmp_files, sum_cross_sections):
+    def _merge_PT_grids(self, tmp_files, sum_outputs):
         """
-        Combine the PT-grid of the temporary files.
+        Combine the PT-grids of the temporary files.
+
+        Parameters:
+        tmp_files (list): List of temporary files to combine.
+        sum_outputs (bool): Whether to sum the outputs.
+
+        Returns:
+        tuple: A tuple containing the main wavelength grid, pressure grid, and temperature grid.
         """
         all_PT = []
         for i, tmp_file in enumerate(tmp_files):
@@ -146,7 +183,7 @@ class CrossSections:
                 T_main = T.copy()
 
             assert (wave_main == wave).all(), "Wavelength grids are not compatible."
-            if sum_cross_sections:
+            if sum_outputs:
                 assert (P_main == P).all(), "Pressure grids are not compatible."
                 assert (T_main == T).all(), "Temperature grids are not compatible."
 
@@ -170,7 +207,7 @@ class CrossSections:
 
         return wave_main, P_main, T_main
         
-    def _check_if_sum_cross_sections(self):
+    def _check_if_sum_outputs(self):
         """
         Check if the cross-sections should be summed.
         """
@@ -182,7 +219,12 @@ class CrossSections:
         return True
 
     def _read_from_config(self, config):
-        """Read the configuration file."""
+        """
+        Read the configuration file.
+
+        Parameters:
+        config (dict): Configuration dictionary.
+        """
 
         self.config = config
         utils.units_warning(self.config)
@@ -217,9 +259,21 @@ class CrossSections:
         # Final output file
         self.final_output_file = getattr(self.config, 'final_output_file', f'{self.species}.hdf5')
         self.final_output_file = (self.output_data_dir / self.final_output_file).resolve()
-        if self.final_output_file.exists():
-            response = input(f"Warning: Final output file '{self.final_output_file}' already exists. Do you want to overwrite it? (yes/no): ")
-            if response.lower() != 'yes':
-                raise FileExistsError(f"Final output file '{self.final_output_file}' already exists and will not be overwritten.")
 
-        assert hasattr(self.config, 'files'), 'No files specified'
+    def _configure_nu_grid(self):
+        """
+        Configure the wavenumber grid.
+        """
+        self.nu_min = sc.c/self.wave_max # [m] -> [s^-1]
+        self.nu_max = sc.c/self.wave_min # [m] -> [s^-1]
+
+        # Number of grid points
+        self.N_grid = int((self.nu_max-self.nu_min)/self.delta_nu) + 1
+
+        # Not exact value of delta_nu given above, but done to keep final lambda values fixed
+        self.delta_nu = (self.nu_max-self.nu_min) / (self.N_grid-1)
+        self.nu_grid  = np.linspace(self.nu_min, self.nu_max, num=self.N_grid, endpoint=True)
+        
+        self.wave_grid = sc.c/self.nu_grid
+
+        #print(f'\nGenerated wavelength grid of {N_grid} points from {wave_min*1e6:.3f} to {wave_max*1e6:.3f} um')

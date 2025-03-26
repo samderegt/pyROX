@@ -77,10 +77,17 @@ class CIA_HITRAN(CrossSections):
 
         return T_grid, abs_coeff_k, abs_coeff_alpha
 
-    def calculate_cross_sections(self, **kwargs):
+    def calculate_tmp_outputs(self, **kwargs):
+
+        files = getattr(self.config, 'files', None)
+        if files is None:
+            raise ValueError('No files specified in the configuration.')
+        cia_files = files.get('cia', None)
+        if cia_files is None:
+            raise ValueError('No CIA files specified in the configuration.')
 
         self.T_grid, self.abs_coeff_k, self.abs_coeff_alpha = [], [], []
-        for i, (file, *masks) in enumerate(self.config.files['cia']):
+        for i, (file, *masks) in enumerate(cia_files):
             
             print(f'\nReading CIA data from file \"{file}\"')
 
@@ -95,7 +102,7 @@ class CIA_HITRAN(CrossSections):
                     )
 
                 # Remove wavenumbers outside the range
-                mask_nu = masks[1](self.nu_grid)
+                mask_nu = masks[1](self.nu_grid/(100.0*sc.c))
                 abs_coeff_k[:,~mask_nu]     = 0.
                 abs_coeff_alpha[:,~mask_nu] = 0.
 
@@ -106,7 +113,7 @@ class CIA_HITRAN(CrossSections):
             utils.save_to_hdf5(
                 tmp_output_file, 
                 data={
-                    'wave': sc.c/self.nu_grid, 
+                    'wave': self.wave_grid, 
                     'T': T_grid, 
                     'k': abs_coeff_k.T, 
                     'alpha': abs_coeff_alpha.T
@@ -119,123 +126,56 @@ class CIA_HITRAN(CrossSections):
                     }
                 )
 
-        # Combine the temporary files and save the data
-        datasets, attrs = self.combine_tmp_cross_sections(keys_to_read=['k', 'alpha'])
-        
-        datasets['k']     = np.around(np.log10(datasets['k']+1e-250), decimals=3)
-        datasets['alpha'] = np.around(np.log10(datasets['alpha']+1e-250), decimals=3)
+    def save_merged_outputs(self, *args, **kwargs):
 
+        if self.final_output_file.exists():
+            response = input(f"Warning: Final output file '{self.final_output_file}' already exists. Do you want to overwrite it? (yes/no): ")
+            if response.lower() not in ['y', 'yes']:
+                raise FileExistsError(f"Not overwriting final output file '{self.final_output_file}'.")
+
+        # Merge the temporary files
+        self.merge_tmp_outputs(keys_to_merge=['k', 'alpha'])
+
+        # Convert to log10
+        # self.merged_datasets['k'] = np.around(np.log10(self.merged_datasets['k']+1e-250), decimals=3)
+        # self.merged_attrs['k']    = {'units': 'log10(m^5 molecule^-2)'}
+
+        # self.merged_datasets['alpha'] = np.around(np.log10(self.merged_datasets['alpha']+1e-250), decimals=3)
+        # self.merged_attrs['alpha']    = {'units': 'log10(m^-1 molecule^-2)'}
+
+        # Flip arrays to be ascending in wavelength
+        if np.diff(self.merged_datasets['wave'])[0] < 0:
+            self.merged_datasets['wave']  = self.merged_datasets['wave'][::-1]
+            self.merged_datasets['k']     = self.merged_datasets['k'][::-1]
+            self.merged_datasets['alpha'] = self.merged_datasets['alpha'][::-1]
+
+        print(self.merged_attrs)
+
+        # Save the merged data
         utils.save_to_hdf5(
-            self.output_file, 
-            data=datasets, 
-            attrs=attrs
+            self.final_output_file, 
+            data=self.merged_datasets, 
+            attrs=self.merged_attrs
             )
 
-        # Save the combined data
-        print(datasets.keys(), attrs.keys())
+    def plot_merged_outputs(self, *args, **kwargs):
 
-"""
-    def get_cross_sections(self, config, tmp_output_file='cia{}.hdf5', show_pbar=True, **kwargs):
+        # Load the merged data
+        self.merged_datasets = utils.read_from_hdf5(
+            self.final_output_file, keys_to_read=['wave', 'T', 'k', 'alpha']
+            )
 
-        # Load CIA data from HITRAN
-        file = conf.files['cia']
-        with open(file, 'r') as f:
-            lines = f.readlines()
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(12,6), nrows=2, sharex=True)
 
-        N_grid, self.T_grid = [], []
-        for line in lines:
-            if len(line) < 101:
-                continue
-            # Header line
-            N_grid.append(int(line[40:40+7]))
-            self.T_grid.append(float(line[47:47+7]))
+        for i, T_i in enumerate(self.merged_datasets['T']):
+            c_i = plt.get_cmap('RdBu_r')(T_i/self.merged_datasets['T'].max())
 
-        self.T_grid = np.array(self.T_grid)
-        N_grid = np.array(N_grid) # TODO: use different name
+            ax[0].plot(1e6*self.merged_datasets['wave'], self.merged_datasets['k'][:,i], c=c_i, label=f'{T_i} K')
+            ax[1].plot(1e6*self.merged_datasets['wave'], self.merged_datasets['alpha'][:,i], c=c_i)
 
-        self.k_grid = np.zeros((len(self.T_grid), self.N_grid))
-        for i, (N_grid_i, T_i) in enumerate(zip(N_grid, self.T_grid)):
-            idx_min = 1 + i*(N_grid_i+1)
-            idx_max = idx_min + N_grid_i
+        ax[0].set(xscale='log', yscale='log', ylabel='k [m^5 molecule^-2]')
+        ax[1].set(xscale='log', yscale='log', xlabel='wave [m]', ylabel='alpha [m^-1 molecule^-2]')
 
-            nu = np.array(
-                [line[0:10].strip() for line in lines[idx_min:idx_max]], dtype=np.float64
-                )
-            nu *= 100.0*sc.c # [cm^-1] -> [s^-1]
-
-            k = np.array(
-                [line[10:21].strip() for line in lines[idx_min:idx_max]], dtype=np.float64
-                )
-            k *= (1e-2)**5 # [cm^5 molecule^-2] -> [m^5 molecule^-2]
-
-            # Interpolate onto nu_grid
-            interp_func = interp1d(nu, np.log10(k), kind='linear', fill_value=np.nan, bounds_error=False)
-            self.k_grid[i] = 10**interp_func(self.nu_grid)
-            self.k_grid[i] = np.nan_to_num(self.k_grid[i], nan=0.0)
-
-        # [m^5 molecule^-2] * [m^-6] = [m^-1 molecule^-2]
-        self.alpha_grid = self.k_grid * sc.L0**2
-
-        # Save cross-sections to file
-        tmp_output_file = f'{conf.output_dir}/' + tmp_output_file.format('')
-        self.save_cross_sections(tmp_output_file)
-
-    def save_cross_sections(self, file):
-        
-        print(f'\nSaving cross-sections to file \"{file}\"')
-
-        # Create directory if not exist
-        pathlib.Path(file).parent.mkdir(parents=True, exist_ok=True)
-
-        with h5py.File(file, 'w') as f:
-            # Flip arrays to be ascending in wavelength
-            wave       = sc.c / self.nu_grid[::-1]
-            alpha_grid = self.alpha_grid[:,::-1]
-            k_grid     = self.k_grid[:,::-1]
-
-            f.create_dataset('T', compression='gzip', data=self.T_grid) # [K]
-            f.create_dataset('wave', compression='gzip', data=wave) # [m]
-            f.create_dataset(
-                'alpha', compression='gzip', 
-                data=np.log10(alpha_grid+1e-250) # [m^-1 molecule^-2] -> log10([m^-1 molecule^-2])
-                ) 
-            f.create_dataset(
-                'k', compression='gzip', 
-                data=np.log10(k_grid+1e-250) # [m^5 molecule^-2] -> log10([m^5 molecule^-2])
-                )
-
-        return
-
-'''
-        plt.figure(figsize=(8,6))
-        for i, T_i in enumerate(T):
-            if T_i%100 != 0:
-                continue
-            if T_i > 3000:
-                continue
-            plt.plot(1e6*sc.c/self.nu_grid, self.alpha_grid[i], c=plt.get_cmap('RdBu_r')(T_i/3000), label=str(T_i))
-        plt.xscale('log'); plt.yscale('log')
-        plt.xlim(0.5,250); plt.ylim(1e-14,1e-4)
-        plt.legend(ncols=2)
-        plt.savefig(conf.output_dir + 'cia.pdf')
+        plt.savefig(self.output_data_dir / 'cia_coeffs.pdf', bbox_inches='tight')
         plt.close()
-
-        import h5py
-        hdf5_file = '/net/schenk/data2/regt/pRT3_input_data/input_data/opacities/continuum/collision_induced_absorptions/H2--H2/H2--H2-NatAbund/H2--H2-NatAbund__BoRi.R831_0.6-250mu.ciatable.petitRADTRANS.h5'
-        with h5py.File(hdf5_file, 'r') as f:
-            nu = f['wavenumbers'][:]
-            alpha = f['alpha'][:]
-            temperature = f['t'][:]
-
-        plt.figure(figsize=(8,6))
-        for i, T_i in enumerate(temperature):
-            if T_i > 3000:
-                continue
-            plt.plot(1e4/nu, alpha[i], c=plt.get_cmap('RdBu_r')(T_i/3000), label=str(T_i))
-        plt.xscale('log'); plt.yscale('log')
-        plt.xlim(0.5,250); plt.ylim(1e-14,1e-4)
-        plt.legend(ncols=2)
-        plt.savefig(conf.output_dir + 'cia_petitRADTRANS.pdf')
-        plt.close()
-'''
-"""

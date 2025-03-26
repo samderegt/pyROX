@@ -11,6 +11,8 @@ if __name__ == '__main__':
         )
     parser.add_argument('--download', '-d', action='store_true')
     parser.add_argument('--cross_sections', '-cs', action='store_true')
+    parser.add_argument('--save', '-s', action='store_true')
+    parser.add_argument('--plot', action='store_true')
 
     args = parser.parse_args()
 
@@ -23,4 +25,8 @@ if __name__ == '__main__':
     if args.download:
         data.download_data()
     if args.cross_sections:
-        data.calculate_cross_sections()
+        data.calculate_tmp_outputs()
+    if args.save:
+        data.save_merged_outputs()
+    if args.plot:
+        data.plot_merged_outputs()

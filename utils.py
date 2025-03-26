@@ -42,37 +42,6 @@ def wget_if_not_exist(url, out_dir, out_name=None):
     out_name = tmp_file.rename(out_name)
     return str(out_name)
 
-def get_nu_grid(wave_min, wave_max, delta_nu):
-    """
-    Generate a grid of frequencies.
-
-    Parameters:
-    wave_min (float): Minimum wavelength [m].
-    wave_max (float): Maximum wavelength [m].
-    delta_nu (float): Frequency step [s^-1].
-
-    Returns:
-    tuple: A tuple containing:
-        - nu_grid (numpy.ndarray): Array of frequencies.
-        - delta_nu (float): Adjusted wavenumber step.
-        - nu_min (float): Minimum wavenumber.
-        - nu_max (float): Maximum wavenumber.
-        - N_grid (int): Number of grid points.
-    """
-    nu_min = sc.c/wave_max # [m] -> [s^-1]
-    nu_max = sc.c/wave_min # [m] -> [s^-1]
-
-    # Number of grid points
-    N_grid = int((nu_max-nu_min)/delta_nu) + 1
-
-    # Not exact value of delta_nu given above, but done to keep final lambda values fixed
-    delta_nu = (nu_max-nu_min) / (N_grid-1)
-    nu_grid  = np.linspace(nu_min, nu_max, num=N_grid, endpoint=True)
-
-    print(f'\nGenerated wavelength grid of {N_grid} points from {wave_min*1e6:.3f} to {wave_max*1e6:.3f} um')
-    
-    return nu_grid, delta_nu, nu_min, nu_max, N_grid
-
 def save_to_hdf5(file, data, attrs, compression='gzip', **kwargs):
     """
     Save data to an HDF5 file.
@@ -94,7 +63,7 @@ def save_to_hdf5(file, data, attrs, compression='gzip', **kwargs):
             attrs_i = attrs.get(key, None)
             if attrs_i is None:
                 continue
-            for key_j, value_j in attrs_i.items():
+            for key_j, value_j in dict(attrs_i).items():
                 dat_i.attrs[key_j] = value_j
 
 def read_from_hdf5(file, keys_to_read, return_attrs=False):
@@ -114,7 +83,7 @@ def read_from_hdf5(file, keys_to_read, return_attrs=False):
             if key_i not in f.keys():
                 continue
             datasets[key_i] = f[key_i][:]
-            datasets_attrs[key_i] = f[key_i].attrs.items()
+            datasets_attrs[key_i] = dict(f[key_i].attrs)
 
     if return_attrs:
         return datasets, datasets_attrs
