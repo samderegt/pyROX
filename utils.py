@@ -10,6 +10,9 @@ sc.L0 = sc.physical_constants['Loschmidt constant (273.15 K, 101.325 kPa)'][0] #
 sc.e_cgs = sc.elementary_charge / 3.33564e-10 # [statC] = [cm^3/2 g^1/2 s^-1]
 sc.amu = sc.physical_constants['atomic mass constant'][0] # [kg]
 
+sc.m_H2 = 2.01588*sc.amu  # [kg]
+sc.m_He = 4.002602*sc.amu # [kg]
+
 def wget_if_not_exist(url, out_dir, out_name=None):
     """
     Download a file from a URL if it does not already exist.
