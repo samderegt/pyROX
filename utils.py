@@ -34,7 +34,7 @@ def wget_if_not_exist(url, out_dir, out_name=None):
         print(f'  File \"{out_name}\" already exists, skipping download')
         return str(out_name)
     else:
-        print(f'  Downloading file from \"{url}\"')
+        print(f'  Downloading from \"{url}\"')
     
     # Download and rename
     tmp_file = wget.download(url, out=str(out_dir))
@@ -58,8 +58,13 @@ def save_to_hdf5(file, data, attrs, compression='gzip', **kwargs):
 
     with h5py.File(file, 'w') as f:
         for key, value in data.items():
+
+            value = np.atleast_1d(value)
+            if value.dtype.kind in {'U', 'S'}:
+                value = value.astype('S')  # Convert unicode to bytes
+                
             dat_i = f.create_dataset(
-                key, data=value, compression=compression, **kwargs
+                name=key, data=value, compression=compression, **kwargs
                 )
 
             attrs_i = attrs.get(key, None)
@@ -138,6 +143,7 @@ def find_nearest(a, b):
     else:
         idx = np.abs(a-b).argmin()
     return idx, a[idx]
+
 
 class Broaden_Gharib_Nezhad_ea_2021:
     """

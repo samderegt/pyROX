@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.interpolate import interp1d
 
+import datetime
 import pathlib
 
 from cross_sections import CrossSections
@@ -11,6 +12,7 @@ class CIA(CrossSections):
     """
     Base class for CIA cross-sections.
     """
+
     def __init__(self, config):
         # Initialise the CrossSections parent class
         super().__init__(config)
@@ -55,12 +57,13 @@ class CIA(CrossSections):
         """
         Plot the merged outputs. Same for all CIA classes.
         """
+        
+        print(f'\nPlotting CIA coefficients')
+
         # Load the merged data
         self.merged_datasets = utils.read_from_hdf5(
             self.final_output_file, keys_to_read=['wave', 'T', 'k', 'alpha']
             )
-
-        print(f'\nPlotting CIA coefficients')
 
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(9,6), nrows=2, sharex=True)
@@ -92,8 +95,107 @@ class CIA(CrossSections):
     def convert_to_pRT2(self):
         raise NotImplementedError('Conversion to petitRADTRANS-v2.0 format is not implemented.')
     
-    def convert_to_pRT3(self):
-        raise NotImplementedError('Conversion to petitRADTRANS-v3.0 format is not implemented.')
+    def convert_to_pRT3(self, **kwargs):
+
+        print(f'\nConverting to petitRADTRANS-v3.0 format')
+
+        # Load the attributes for the hdf5 file
+        pRT3_metadata = getattr(self.config, 'pRT3_metadata', None)
+        if pRT3_metadata is None:
+            raise ValueError('No pRT3_metadata specified in the configuration.')
+
+        # Check if required keys are in pRT3_metadata
+        for key in ['DOI', 'mol_mass', 'mol_name']:
+            if key in pRT3_metadata:
+                continue
+            raise KeyError(f"Required key '{key}' not found in pRT3_metadata.")
+
+
+        data = {
+            'DOI': np.atleast_1d(pRT3_metadata['DOI']),
+            'Date_ID': np.atleast_1d(f'petitRADTRANS-v3_{datetime.datetime.now(datetime.timezone.utc).isoformat()}'),
+            'mol_mass': np.atleast_1d(pRT3_metadata['mol_mass']),
+            'mol_name': np.atleast_1d(pRT3_metadata['mol_name'])
+        }
+
+        # Attributes of all datasets
+        attrs = dict(
+            DOI = {'additional_description': 'None', 'long_name': 'Data object identifier linked to the data'},
+            Date_ID = {'long_name': 'ISO 8601 UTC time (https://docs.python.org/3/library/datetime.html) at which the table has been created, along with the version of petitRADTRANS'},
+            alpha = {'long_name': 'Table of monochromatic absorption with axes (temperature, wavenumber)', 'units': 'cm^-1'},
+            mol_mass = {'long_name': 'Masses of the colliding species', 'units': 'AMU'},
+            mol_name = {'long_name': 'Names of the colliding species described'},
+            t = {'long_name': 'Temperature grid', 'units': 'K'},
+            wavenumbers = {'long_name': 'CIA wavenumbers', 'units': 'cm^-1'},
+            wlrange = {'long_name': 'Wavelength range covered', 'units': 'µm'},
+            wnrange = {'long_name': 'Wavenumber range covered', 'units': 'cm^-1'}
+        )
+        # Add contributors if given
+        contributor = kwargs.get('contributor', None)
+        if contributor is not None:
+            attrs['DOI']['contributor'] = contributor
+
+        # Load the merged data
+        self.merged_datasets = utils.read_from_hdf5(
+            self.final_output_file, keys_to_read=['wave', 'T', 'k', 'alpha']
+            )
+
+        wave_min = 1e6*self.merged_datasets['wave'].min()
+        wave_max = 1e6*self.merged_datasets['wave'].max()
+        resolution = 1e6*sc.c/self.delta_nu # At 1 um
+
+        # Fill the dictionary
+        data['alpha'] = 1e-2*self.merged_datasets['alpha'][::-1,:].T # [m^-1 molecule^-2] -> [cm^-1 molecule^-2], ascending in wavenumber
+        data['t'] = self.merged_datasets['T'] # [K]
+        data['wavenumbers'] = 1e-2/self.merged_datasets['wave'][::-1] # [m] -> [cm^-1], ascending in wavenumber
+        data['wlrange'] = [wave_min, wave_max] # [um]
+        data['wnrange'] = [1e4/wave_max, 1e4/wave_min] # [cm^-1]
+
+        # Complete the filename
+        if isinstance(self, CIA_HITRAN):
+            database = 'HITRAN'
+        elif isinstance(self, CIA_Borysov):
+            database = 'BoRi'
+
+        pRT_file = '{}--{}-NatAbund__{}.R{:.0f}_{:.1f}-{:.0f}mu.ciatable.petitRADTRANS.h5'
+        pRT_file = pRT_file.format(
+            pRT3_metadata['mol_name'][0], pRT3_metadata['mol_name'][1], 
+            database, resolution, wave_min, wave_max
+            )
+        pRT_file = self.output_data_dir / pRT_file
+
+        # Save the datasets
+        utils.save_to_hdf5(pRT_file, data=data, attrs=attrs, compression=None)
+        #return
+
+
+        import matplotlib.pyplot as plt
+        import h5py
+
+        plt.figure(figsize=(9,6))
+        with h5py.File(pRT_file, 'r') as f:
+            for key in f.keys():
+                print('\n'+key)
+                print(dict(f[key].attrs))
+                print(f[key][:])
+                
+            idx = np.argwhere(f['t'][:]==3000.).flatten()[0]
+            plt.plot(1e-2/f['wavenumbers'][:], 1e2*f['alpha'][:][idx,:])
+
+        pRT_file = '/net/schenk/data2/regt/pRT3_input_data/input_data/opacities/continuum/collision_induced_absorptions/H2--H2/H2--H2-NatAbund/H2--H2-NatAbund__BoRi.R831_0.6-250mu.ciatable.petitRADTRANS.h5'
+        with h5py.File(pRT_file, 'r') as f:
+            for key in f.keys():
+                print('\n'+key)
+                print(dict(f[key].attrs))
+                print(f[key][:])
+                
+            idx = np.argwhere(f['t'][:]==3000.).flatten()[0]
+            plt.plot(1e-2/f['wavenumbers'][:], 1e2*f['alpha'][:][idx,:], ls='--')
+
+        plt.yscale('log'); plt.xscale('log')
+        plt.savefig(self.output_data_dir / 'test.pdf')
+        plt.close()
+
 
 class CIA_HITRAN(CIA):
 
@@ -228,7 +330,9 @@ class CIA_HITRAN(CIA):
 class CIA_Borysov(CIA):
     def __init__(self, config):
         
-        print('\nInitialising CIA_Borysov')
+        print('-'*60)
+        print('  Collision-Induced Absorption from Borysov')
+        print('-'*60+'\n')
         super().__init__(config) # Initialise the parent CIA class
 
         raise NotImplementedError('CIA_Borysov is not implemented.')

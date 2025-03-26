@@ -25,4 +25,10 @@ tmp_output_file = 'cia_coeffs_{}.hdf5'
 
 # Wavenumber/wavelength grid
 wave_min = 1.0/3.0; wave_max = 250.0 # [um]
-delta_nu = 0.5 # [cm^-1]
+delta_nu = 10 # [cm^-1]
+
+pRT3_metadata = dict(
+    DOI = ['10.1021/jp109441f', '10.3847/1538-4365/aaa07a'], 
+    mol_mass = [2.0,2.0],
+    mol_name = ['H2','H2'],
+)
