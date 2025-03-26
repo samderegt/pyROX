@@ -10,14 +10,14 @@ urls = [
     #'https://hitran.org/data/CIA/supplementary/H2-H2_norm_2018.cia', 
 ]
 # Input/output-directories
-input_dir  = f'./{species}/input_data/'
-output_dir = f'./{species}/'
+input_data_dir  = f'./h2-h2_HITRAN/input_data/'
+output_data_dir = f'./h2-h2_HITRAN/'
 
 files = dict(
     cia = [
         # Whichever file is last in the list will be prioritised at shared grid points
-        (f'{input_dir}/H2-H2_2011.cia',    lambda T: (T>=200)&(T<=3000), lambda nu: (nu>=20)&(nu<=10000)),
-        (f'{input_dir}/H2-H2_eq_2018.cia', lambda T: (T>=40)&(T<=400),   lambda nu: (nu>=0)&(nu<=2400)), 
+        (f'{input_data_dir}/H2-H2_2011.cia',    lambda T: (T>=200)&(T<=3000), lambda nu: (nu>=20)&(nu<=10000)),
+        (f'{input_data_dir}/H2-H2_eq_2018.cia', lambda T: (T>=40)&(T<=400),   lambda nu: (nu>=0)&(nu<=2400)), 
     ], 
 )
 

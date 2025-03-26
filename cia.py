@@ -17,6 +17,58 @@ class CIA(CrossSections):
         # Initialise the CrossSections parent class
         super().__init__(config)
 
+    def calculate_tmp_outputs(self, **kwargs):
+        """
+        Calculate the CIA coefficients.
+        """
+
+        print('\nCalculating CIA coefficients')
+
+        files = getattr(self.config, 'files', None)
+        if files is None:
+            raise ValueError('No files specified in the configuration.')
+        cia_files = files.get('cia', None)
+        if cia_files is None:
+            raise ValueError('No CIA files specified in the configuration.')
+
+        self.T_grid, self.abs_coeff_k, self.abs_coeff_alpha = [], [], []
+        for i, (file, *masks) in enumerate(cia_files):
+
+            # Compute absorption coefficients
+            T_grid, abs_coeff_k, abs_coeff_alpha = self._read_absorption_coefficients(file)
+
+            if len(masks) != 0:
+                # Remove temperatures outside the range
+                mask_T = masks[0](T_grid)
+                T_grid, abs_coeff_k, abs_coeff_alpha = self.mask_arrays(
+                    [T_grid, abs_coeff_k, abs_coeff_alpha], mask=mask_T, axis=0
+                    )
+
+                # Remove wavenumbers outside the range
+                mask_nu = masks[1](self.nu_grid/(100.0*sc.c))
+                abs_coeff_k[:,~mask_nu]     = 0.
+                abs_coeff_alpha[:,~mask_nu] = 0.
+
+            # Temporarily save the data
+            tmp_output_file = str(self.tmp_output_file)
+            tmp_output_file = tmp_output_file.format(pathlib.Path(file).name)
+
+            utils.save_to_hdf5(
+                tmp_output_file, 
+                data={
+                    'wave': self.wave_grid, 
+                    'T': T_grid, 
+                    'k': abs_coeff_k.T, 
+                    'alpha': abs_coeff_alpha.T
+                    },
+                attrs={
+                    'wave': {'units': 'm'}, 
+                    'T': {'units': 'K'}, 
+                    'k': {'units': 'm^5 molecule^-2'}, 
+                    'alpha': {'units': 'm^-1 molecule^-2'}
+                    }
+                )
+
     def save_merged_outputs(self, **kwargs):
         """
         Merge the temporary files and save the final output. Same for all CIA classes.
@@ -154,8 +206,8 @@ class CIA(CrossSections):
         # Complete the filename
         if isinstance(self, CIA_HITRAN):
             database = 'HITRAN'
-        elif isinstance(self, CIA_Borysov):
-            database = 'BoRi'
+        elif isinstance(self, CIA_Borysow):
+            database = 'Borysow'
 
         pRT_file = '{}--{}-NatAbund__{}.R{:.0f}_{:.1f}-{:.0f}mu.ciatable.petitRADTRANS.h5'
         pRT_file = pRT_file.format(
@@ -166,36 +218,6 @@ class CIA(CrossSections):
 
         # Save the datasets
         utils.save_to_hdf5(pRT_file, data=data, attrs=attrs, compression=None)
-        #return
-
-
-        import matplotlib.pyplot as plt
-        import h5py
-
-        plt.figure(figsize=(9,6))
-        with h5py.File(pRT_file, 'r') as f:
-            for key in f.keys():
-                print('\n'+key)
-                print(dict(f[key].attrs))
-                print(f[key][:])
-                
-            idx = np.argwhere(f['t'][:]==3000.).flatten()[0]
-            plt.plot(1e-2/f['wavenumbers'][:], 1e2*f['alpha'][:][idx,:])
-
-        pRT_file = '/net/schenk/data2/regt/pRT3_input_data/input_data/opacities/continuum/collision_induced_absorptions/H2--H2/H2--H2-NatAbund/H2--H2-NatAbund__BoRi.R831_0.6-250mu.ciatable.petitRADTRANS.h5'
-        with h5py.File(pRT_file, 'r') as f:
-            for key in f.keys():
-                print('\n'+key)
-                print(dict(f[key].attrs))
-                print(f[key][:])
-                
-            idx = np.argwhere(f['t'][:]==3000.).flatten()[0]
-            plt.plot(1e-2/f['wavenumbers'][:], 1e2*f['alpha'][:][idx,:], ls='--')
-
-        plt.yscale('log'); plt.xscale('log')
-        plt.savefig(self.output_data_dir / 'test.pdf')
-        plt.close()
-
 
 class CIA_HITRAN(CIA):
 
@@ -275,71 +297,62 @@ class CIA_HITRAN(CIA):
 
         return T_grid, abs_coeff_k, abs_coeff_alpha
 
-    def calculate_tmp_outputs(self, **kwargs):
-        """
-        Calculate the CIA coefficients.
-        """
-
-        print('\nCalculating CIA coefficients')
-
-        files = getattr(self.config, 'files', None)
-        if files is None:
-            raise ValueError('No files specified in the configuration.')
-        cia_files = files.get('cia', None)
-        if cia_files is None:
-            raise ValueError('No CIA files specified in the configuration.')
-
-        self.T_grid, self.abs_coeff_k, self.abs_coeff_alpha = [], [], []
-        for i, (file, *masks) in enumerate(cia_files):
-
-            # Compute absorption coefficients
-            T_grid, abs_coeff_k, abs_coeff_alpha = self._read_absorption_coefficients(file)
-
-            if len(masks) != 0:
-                # Remove temperatures outside the range
-                mask_T = masks[0](T_grid)
-                T_grid, abs_coeff_k, abs_coeff_alpha = self.mask_arrays(
-                    [T_grid, abs_coeff_k, abs_coeff_alpha], mask=mask_T, axis=0
-                    )
-
-                # Remove wavenumbers outside the range
-                mask_nu = masks[1](self.nu_grid/(100.0*sc.c))
-                abs_coeff_k[:,~mask_nu]     = 0.
-                abs_coeff_alpha[:,~mask_nu] = 0.
-
-            # Temporarily save the data
-            tmp_output_file = str(self.tmp_output_file)
-            tmp_output_file = tmp_output_file.format(pathlib.Path(file).name)
-
-            utils.save_to_hdf5(
-                tmp_output_file, 
-                data={
-                    'wave': self.wave_grid, 
-                    'T': T_grid, 
-                    'k': abs_coeff_k.T, 
-                    'alpha': abs_coeff_alpha.T
-                    },
-                attrs={
-                    'wave': {'units': 'm'}, 
-                    'T': {'units': 'K'}, 
-                    'k': {'units': 'm^5 molecule^-2'}, 
-                    'alpha': {'units': 'm^-1 molecule^-2'}
-                    }
-                )
-
-class CIA_Borysov(CIA):
+class CIA_Borysow(CIA):
     def __init__(self, config):
         
         print('-'*60)
-        print('  Collision-Induced Absorption from Borysov')
+        print('  Collision-Induced Absorption from Borysow')
         print('-'*60+'\n')
         super().__init__(config) # Initialise the parent CIA class
 
-        raise NotImplementedError('CIA_Borysov is not implemented.')
-
     def download_data(self):
-        raise NotImplementedError('Downloading CIA data is not implemented.')
+        raise NotImplementedError('Please download the data manually from https://www.astro.ku.dk/~aborysow/programs/')
 
-    def calculate_tmp_outputs(self, **kwargs):
-        raise NotImplementedError('Calculating CIA coefficients is not implemented.')
-    
+    def _read_absorption_coefficients(self, file):
+        """
+        Read absorption coefficients from a Borysow CIA file.
+        """
+
+        file = pathlib.Path(file)
+        print(f'  Reading from \"{file}\"')
+
+        if not file.exists():
+            raise FileNotFoundError(f'File \"{file}\" not found.')
+
+        # Read CIA data
+        with open(file, 'r') as f:
+            lines = f.readlines()
+
+        # Infer column-widths
+        import re
+        col_0 = re.findall('\s+\S+', lines[3]) # Skip the header
+        col_widths = [len(col) for col in col_0]
+        
+        # Infer the temperatures
+        T_grid = [el.replace('K','') for el in lines[1].split()[1:]]
+        T_grid = np.array(T_grid, dtype=np.float64)
+
+        from pandas import read_fwf
+        data = np.asarray(read_fwf(file, widths=col_widths, skiprows=3, header=None))
+        nu_native = data[:,0] * 100.0*sc.c # [cm^-1] -> [s^-1]
+        abs_coeff_alpha_native = data[:,1:] * 1e2 # [cm^-1 molecule^-2] -> [m^-1 molecule^-2]
+
+        abs_coeff_alpha = np.zeros((len(T_grid), self.N_grid))
+        for i, abs_coeff_alpha_i in enumerate(abs_coeff_alpha_native.T):
+
+            # Remove any empty entries
+            nu_i = nu_native[~np.isnan(abs_coeff_alpha_i)]
+            abs_coeff_alpha_i = abs_coeff_alpha_i[~np.isnan(abs_coeff_alpha_i)]
+
+            # Interpolate onto nu_grid
+            interp_func = interp1d(
+                nu_i, np.log10(abs_coeff_alpha_i), kind='linear', 
+                fill_value=np.nan, bounds_error=False
+                )
+            abs_coeff_alpha[i] = 10**interp_func(self.nu_grid)
+            abs_coeff_alpha[i] = np.nan_to_num(abs_coeff_alpha[i], nan=0.0)
+
+        # [m^-1 molecule^-2] -> [m^5 molecule^-2]
+        abs_coeff_k = abs_coeff_alpha / sc.L0**2
+
+        return T_grid, abs_coeff_k, abs_coeff_alpha

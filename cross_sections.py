@@ -15,8 +15,8 @@ def load_data_object(config):
     import cia
     if database == 'cia_hitran':
         return cia.CIA_HITRAN(config)
-    elif database == 'cia_borysov':
-        return cia.CIA_Borysov(config)
+    elif database == 'cia_borysow':
+        return cia.CIA_Borysow(config)
 
     import lines
     if database == 'exomol':
