@@ -24,10 +24,7 @@ class CIA(CrossSections):
 
         print('\nCalculating CIA coefficients')
 
-        files = getattr(self.config, 'files', None)
-        if files is None:
-            raise ValueError('No files specified in the configuration.')
-        cia_files = files.get('cia', None)
+        cia_files = self.config.files.get('cia', None)
         if cia_files is None:
             raise ValueError('No CIA files specified in the configuration.')
 

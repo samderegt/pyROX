@@ -26,53 +26,47 @@ class LineByLine(CrossSections):
         self._read_mass()
         self._read_pressure_broadening_info()
         self._read_equation_of_state()
-        #self._read_partition_function()
+        self._read_partition_function()
 
-        self.N_lines_in_chunk = getattr(config, 'N_lines_in_chunk', 10_000_000)
-
-        '''
-        self.T_0 = getattr(conf, 'T_0', 296.)
-        self.q_0 = np.interp(self.T_0, self.Q[:,0], self.Q[:,1])
-
-        # Create wavenumber grid
-        self._set_nu_grid(conf)
-        self.adaptive_nu_grid = getattr(conf, 'adaptive_nu_grid', False)
-        # Finer resolution to determine which lines to keep
-        self.delta_nu_local_cutoff = getattr(conf, 'delta_nu_local_cutoff', 1e-3) # [cm^-1]
+        self.N_lines_in_chunk = getattr(self.config, 'N_lines_in_chunk', 10_000_000)
         
-        # (P,T)-grid to compute cross-sections on
-        self.P_grid = np.asarray(conf.P_grid) * 1e5 # [bar] -> [Pa]
-        self.T_grid = np.asarray(conf.T_grid)
-        self.N_PT = len(self.P_grid) * len(self.T_grid)
+        # Reference temperature and partition function
+        self.T_0 = getattr(self.config, 'T_0', 296.)
+        self.q_0 = self.compute_partition_function(self.T_0)
 
-        # Cross-sections array
-        self.sigma = np.zeros(
-            (len(self.nu_grid), len(self.P_grid), len(self.T_grid))
-            )
-
-        # Line-wing cutoff
-        self.wing_cutoff = getattr(
-            conf, 'wing_cutoff', 
-            lambda _, P: 25 if P<=200 else 100 # Gharib-Nezhad et al. (2024)
-            )
-        #self.cutoff_max = getattr(conf, 'cutoff_max', 25)
-        self.cutoff_max = getattr(conf, 'cutoff_max', np.inf)
+        # Read the cutoff parameters
+        self.wing_cutoff = getattr(self.config, 'wing_cutoff', None) # [cm^-1]
+        if self.wing_cutoff is None:
+            # Use Gharib-Nezhad et al. (2024) as default
+            self.wing_cutoff = lambda _, P: 25 if P<=200 else 100
+        # Maximum separation, in case of pressure-dependent cutoff
+        self.wing_cutoff_max = getattr(self.config, 'wing_cutoff_max', np.inf) # [cm^-1]
+        # TODO: unit conversion
 
         # Line-strength cutoffs
-        self.local_cutoff  = getattr(conf, 'local_cutoff', None)
-        self.global_cutoff = getattr(conf, 'global_cutoff', None)
-        '''
+        self.global_cutoff = getattr(self.config, 'global_cutoff', None) # [cm^1 molecule^-1]
+        self.global_cutoff *= 1e-2 # [m^1 molecule^-1]
+
+        self.local_cutoff = getattr(self.config, 'local_cutoff', None)  # [fraction of cumulative]
+        # Finer resolution to determine which lines to keep
+        self.delta_nu_local_cutoff = getattr(self.config, 'delta_nu_local_cutoff', 1e-3) # [cm^-1]
+        self.delta_nu_local_cutoff *= 1e2*sc.c # [cm^-1] -> [s^-1]
+
+        # Decrease the wavenumber-grid resolution for high pressures
+        #self._set_nu_grid(self.config)
+        self.adaptive_nu_grid = getattr(self.config, 'adaptive_nu_grid', False)
+
+        # (P,T)-grid to compute cross-sections on
+        self.P_grid = np.atleast_1d(self.config.P_grid) * 1e5 # [bar] -> [Pa]
+        self.T_grid = np.atleast_1d(self.config.T_grid)
+        self.N_PT = len(self.P_grid) * len(self.T_grid)
+
+        #self.sigma = np.zeros((len(self.nu_grid), len(self.P_grid), len(self.T_grid)))
 
     def _read_equation_of_state(self):
         """
         Read the equation of state.
         """
-        # Mean molecular weight of the atmosphere
-        self.mean_mass = np.sum(
-            [info['VMR']*info['mass'] for info in self.pressure_broadening_info.values()]
-        )
-        print(f'  Mean molecular weight using perturber info: {self.mean_mass/sc.amu:.2f} amu')
-
         EOS_table = getattr(self.config, 'EOS_table', None)
         if EOS_table is None:
             # Assume ideal gas
@@ -190,8 +184,28 @@ class LineByLine(CrossSections):
             self.pressure_broadening_info[perturber]['J'] = \
                 np.array(broadening_params[3])[mask_diet]
 
+        print(f'  Pressure broadening info:')
+        for perturber, info in self.pressure_broadening_info.items():
+            print(f'    - {perturber}: VMR={info["VMR"]:.2f}, mass={info["mass"]/sc.amu:.2f} amu')
+
+        # Mean molecular weight of the atmosphere
+        self.mean_mass = np.sum(
+            [info['VMR']*info['mass'] for info in self.pressure_broadening_info.values()]
+        )
+        print(f'  Mean molecular weight of perturbers: {self.mean_mass/sc.amu:.2f} amu')
+
     def _read_partition_function(self):
-        raise NotImplementedError("This method should be implemented in the subclass.")
+        """
+        Read the partition function from the configuration file.
+        """
+        file = self.config.files.get('partition_function', None)
+        if file is None:
+            raise ValueError('Partition function file must be provided in the configuration file.')
+        partition_function = np.loadtxt(file)
+
+        # Make interpolation function
+        self.compute_partition_function = \
+            lambda T: np.interp(T, partition_function[:,0], partition_function[:,1])
 
     def save_merged_outputs(self, **kwargs):
         """
@@ -231,6 +245,8 @@ class HITRAN(LineByLine):
 
         super().__init__(config, **kwargs) # Initialise the parent LineByLine class
 
+        print(dir(self))
+
     def _read_from_config(self, config):
         
         # Read the common parameters
@@ -267,12 +283,22 @@ class Kurucz(LineByLine):
     atoms_info = read_csv(parent_dir/'atoms_info.csv', index_col=0)
 
     def download_data(self, config):
+        
+        # TODO: Download states from NIST
+        # ...
+
+        if self.database == 'vald':
+            raise NotImplementedError('Please download VALD transition-data manually.')
+
+        # TODO: Download Kurucz data
+        # ...
+
         raise NotImplementedError
     
     def __init__(self, config, **kwargs):
 
         print('-'*60)
-        print('  Line-by-line Absorption from Kurucz')
+        print('  Line-by-line Absorption from VALD/Kurucz')
         print('-'*60+'\n')
 
         super().__init__(config, **kwargs) # Initialise the parent LineByLine class
@@ -294,23 +320,32 @@ class Kurucz(LineByLine):
         self.nu_0_to_ignore = np.atleast_1d(getattr(config, 'nu_0_to_ignore', []))
         self.nu_0_to_ignore *= 1e2*sc.c # [cm^-1] -> [s^-1]
 
-    def calculate_tmp_outputs(self, **kwargs):
-        raise NotImplementedError
+    def _read_partition_function(self, T_grid=np.arange(1,5001+1e-6,1)):
+        """
+        Read the partition function from the configuration file.
+        """
+        raise NotImplementedError('Partition function not implemented for Kurucz data.')
 
-class VALD(Kurucz):
+        file = self.config.files.get('partition_function', None)
+        if file is None:
+            raise ValueError('Partition function file must be provided in the configuration file.')
+        # Load the states from NIST
+        partition_function = read_csv(file, sep='\t', engine='python', header=0)
 
-    def download_data(self, config):
-        raise NotImplementedError
-    
-    def __init__(self, config, **kwargs):
+        g = np.array(partition_function['g'])
+        E = np.array(partition_function['Level (cm-1)'])
 
-        print('-'*60)
-        print('  Line-by-line Absorption from VALD')
-        print('-'*60+'\n')
+        # (Higher) Ions beyond this index
+        idx_u = np.min(np.argwhere(np.isnan(g)))
+        g = g[:idx_u]
+        E = E[:idx_u]
 
-        super().__init__(config, **kwargs) # Initialise the parent Kurucz class
+        # Partition function, sum over states, keep temperature-axis
+        # TODO: fix units of c2
+        partition_function = np.array([np.sum(g*np.exp(-sc.c2*E/T_i)) for T_i in T_grid])
 
-        raise NotImplementedError
-    
+        # Make interpolation function
+        self.compute_partition_function = lambda T: np.interp(T, T_grid, partition_function[:,1])
+
     def calculate_tmp_outputs(self, **kwargs):
         raise NotImplementedError

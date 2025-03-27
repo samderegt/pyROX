@@ -22,10 +22,8 @@ def load_data_object(config, **kwargs):
         return line_by_line.ExoMol(config, **kwargs)
     elif database in ['hitemp', 'hitran']:
         return line_by_line.HITRAN(config, **kwargs)
-    elif database == 'kurucz':
+    elif database in ['kurucz', 'vald']:
         return line_by_line.Kurucz(config, **kwargs)
-    elif database == 'vald':
-        return line_by_line.VALD(config, **kwargs)
 
     raise NotImplementedError(f"Database '{config.database}' not implemented.")
 
@@ -254,6 +252,11 @@ class CrossSections:
         self.output_data_dir = getattr(self.config, 'output_data_dir', f'./{self.species}/')
         self.output_data_dir = pathlib.Path(self.output_data_dir).resolve()
         self.output_data_dir.mkdir(parents=True, exist_ok=True)
+
+        # Files to read
+        files = getattr(self.config, 'files', {})
+        if len(files) == 0:
+            raise ValueError('No input-data files specified in the configuration.')
 
         # Temporary output files
         self.tmp_output_dir = self.output_data_dir / 'tmp'
