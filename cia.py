@@ -225,8 +225,13 @@ class CIA_HITRAN(CIA):
 
         print('\nDownloading CIA data from HITRAN')
 
+        files = []
         for url in config.urls:
             file = utils.wget_if_not_exist(url, config.input_data_dir)
+            files.append(file)
+
+        if None in files:
+            raise ValueError('Failed to download all urls.')
     
     def __init__(self, config, **kwargs):
 

@@ -43,8 +43,8 @@ def wget_if_not_exist(url, out_dir, out_name=None):
     # Download and rename
     try:
         tmp_file = wget.download(url, out=str(out_dir))
-    except:
-        warnings.warn(f'Failed to download from \"{url}\"')
+    except Exception as e:
+        warnings.warn(f'Failed to download from \"{url}\": {e}')
         return
     print()
     tmp_file = pathlib.Path(tmp_file)
@@ -113,6 +113,29 @@ def print_welcome_message():
     print('\n'+'='*80)
     print('  Welcome to pyROX: Rapid Opacity X-sections for Python')
     print('='*80+'\n')
+
+def add_to_config(config, **kwargs):
+
+    for key, value in kwargs.items():
+        if value is None:
+            continue # Parameter not given
+
+        new_value = value
+        if isinstance(value, str):
+            new_value = f'\"{new_value}\"'
+
+        # Different warning messages
+        if hasattr(config, key):
+            old_value = getattr(config, key)
+            warnings.warn(f'Overwriting parameter \"{key}\" from {old_value} to {new_value}.')
+        else:
+            warnings.warn(f'Adding parameter \"{key}\" as {new_value}.')
+
+        # Update or add the parameter
+        setattr(config, key, value)
+    print()
+
+    return config
 
 def units_warning(config):
 

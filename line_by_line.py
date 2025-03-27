@@ -2,6 +2,7 @@ import numpy as np
 from pandas import read_fwf, read_csv
 
 import pathlib
+import warnings
 
 from cross_sections import CrossSections
 from utils import sc
@@ -35,13 +36,17 @@ class LineByLine(CrossSections):
         self.q_0 = self.compute_partition_function(self.T_0)
 
         # Read the cutoff parameters
-        self.wing_cutoff = getattr(self.config, 'wing_cutoff', None) # [cm^-1]
-        if self.wing_cutoff is None:
+        wing_cutoff = getattr(self.config, 'wing_cutoff', None) # [cm^-1]
+        if wing_cutoff is None:
             # Use Gharib-Nezhad et al. (2024) as default
-            self.wing_cutoff = lambda _, P: 25 if P<=200 else 100
+            wing_cutoff = lambda _, P: 25 if P<=200 else 100
+
+        # Convert input [s^-1]->[cm^-1] and [Pa]->[bar], and output [cm^-1]->[s^-1]
+        self.wing_cutoff = lambda gamma_V, P: wing_cutoff(gamma_V/(1e2*sc.c), P*1e-5) * 1e2*sc.c
+        
         # Maximum separation, in case of pressure-dependent cutoff
         self.wing_cutoff_max = getattr(self.config, 'wing_cutoff_max', np.inf) # [cm^-1]
-        # TODO: unit conversion
+        self.wing_cutoff_max *= 1e2*sc.c # [cm^-1] -> [s^-1]
 
         # Line-strength cutoffs
         self.global_cutoff = getattr(self.config, 'global_cutoff', None) # [cm^1 molecule^-1]
@@ -60,6 +65,10 @@ class LineByLine(CrossSections):
         self.P_grid = np.atleast_1d(self.config.P_grid) * 1e5 # [bar] -> [Pa]
         self.T_grid = np.atleast_1d(self.config.T_grid)
         self.N_PT = len(self.P_grid) * len(self.T_grid)
+
+        print('\nPT-grid:')
+        print(f'  P: {self.P_grid/1e5} bar')
+        print(f'  T: {self.T_grid} K')
 
         #self.sigma = np.zeros((len(self.nu_grid), len(self.P_grid), len(self.T_grid)))
 
@@ -130,7 +139,6 @@ class LineByLine(CrossSections):
             # Add mass to the perturber_info dictionary if it doesn't exist
             mass = info.get('mass', None)
             if perturber == 'H2' and mass is None:
-                
                 mass = sc.m_H2 / sc.amu
             elif perturber == 'He' and mass is None:
                 mass = sc.m_He / sc.amu
@@ -146,9 +154,11 @@ class LineByLine(CrossSections):
 
             # Use gamma and temperature-exponent from dictionary (gamma*(T0/T)^n*(P/1bar))
             gamma = info.get('gamma', 0.)
+            self.pressure_broadening_info[perturber]['method'] = 'constant(s) from dictionary'
             if callable(gamma):
                 # Callable parameterisation (e.g. Gharib-Nezhad et al. 2024)
                 self.pressure_broadening_info[perturber]['gamma'] = gamma
+                self.pressure_broadening_info[perturber]['method'] = 'function'
             else:
                 self.pressure_broadening_info[perturber]['gamma'] = np.atleast_1d(gamma)
             self.pressure_broadening_info[perturber]['n'] = np.atleast_1d(info.get('n', 0.))
@@ -157,9 +167,11 @@ class LineByLine(CrossSections):
             file = info.get('file', None)
             if file is None:
                 continue
+            file = pathlib.Path(file)
             broadening_params = read_fwf(file, header=None)
             diet = np.array(broadening_params[0], dtype=str)
             gamma, n = np.array(broadening_params[[1,2]].T)
+            self.pressure_broadening_info[perturber]['method'] = f'\"{file}\"'
 
             # Currently only handles these 2 ('a0', 'm0') broadening diets
             mask_diet = (diet == 'a0')
@@ -185,13 +197,18 @@ class LineByLine(CrossSections):
                 np.array(broadening_params[3])[mask_diet]
 
         print(f'  Pressure broadening info:')
+        self.mean_mass, VMR_total = 0., 0.
         for perturber, info in self.pressure_broadening_info.items():
-            print(f'    - {perturber}: VMR={info["VMR"]:.2f}, mass={info["mass"]/sc.amu:.2f} amu')
+            VMR, mass, method = info['VMR'], info['mass'], info['method']
+            print(f'    - {perturber}: VMR={VMR:.2f}, mass={mass/sc.amu:.2f} amu | {method}')
+            self.mean_mass += info['VMR']*info['mass'] # [kg]
+            VMR_total += info['VMR']
+        
+        if VMR_total > 1.0:
+            raise ValueError('Total volume mixing ratio of perturbers exceeds 1.0.')
+        if VMR_total < 1.0:
+            warnings.warn('Total volume mixing ratio of perturbers is less than 1.0.')
 
-        # Mean molecular weight of the atmosphere
-        self.mean_mass = np.sum(
-            [info['VMR']*info['mass'] for info in self.pressure_broadening_info.values()]
-        )
         print(f'  Mean molecular weight of perturbers: {self.mean_mass/sc.amu:.2f} amu')
 
     def _read_partition_function(self):
@@ -229,13 +246,18 @@ class HITRAN(LineByLine):
 
     def download_data(self, config):
         """
-        Download CIA data from HITRAN.
+        Download data from HITRAN.
         """
 
-        print('\nDownloading CIA data from HITRAN')
+        print('\nDownloading data from HITRAN')
 
+        files = []
         for url in config.urls:
             file = utils.wget_if_not_exist(url, config.input_data_dir)
+            files.append(file)
+
+        if None in files:
+            raise ValueError('Failed to download all urls.')
     
     def __init__(self, config, **kwargs):
 
@@ -244,8 +266,6 @@ class HITRAN(LineByLine):
         print('-'*60+'\n')
 
         super().__init__(config, **kwargs) # Initialise the parent LineByLine class
-
-        print(dir(self))
 
     def _read_from_config(self, config):
         

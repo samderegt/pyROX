@@ -260,11 +260,16 @@ class CrossSections:
 
         # Temporary output files
         self.tmp_output_dir = self.output_data_dir / 'tmp'
-        self.tmp_output_file = getattr(self.config, 'tmp_output_file', 'xsec_{}.hdf5')
+
+        default = 'xsec_{}.hdf5'
+        if self.database.startswith('cia'):
+            default = 'cia_coeffs_{}.hdf5'
+        self.tmp_output_file = getattr(self.config, 'tmp_output_file', default)
         self.tmp_output_file = (self.tmp_output_dir / self.tmp_output_file).resolve()
 
         # Final output file
-        self.final_output_file = getattr(self.config, 'final_output_file', f'{self.species}.hdf5')
+        default = default.format(self.species)
+        self.final_output_file = getattr(self.config, 'final_output_file', default)
         self.final_output_file = (self.output_data_dir / self.final_output_file).resolve()
 
     def _configure_nu_grid(self):
@@ -282,3 +287,9 @@ class CrossSections:
         self.nu_grid  = np.linspace(self.nu_min, self.nu_max, num=self.N_grid, endpoint=True)
         
         self.wave_grid = sc.c/self.nu_grid # [s^-1] -> [m]
+
+        print('\nWavelength-grid:')
+        print(f'  Wavelength: {self.wave_min*1e6:.2f} - {self.wave_max*1e6:.0f} um')
+        print(f'  Wavenumber: {self.nu_min/(1e2*sc.c):.0f} - {self.nu_max/(1e2*sc.c):.0f} cm^-1')
+        print(f'  Delta nu:   {self.delta_nu/(1e2*sc.c):.3f} cm^-1')
+        print(f'  Number of grid points: {self.N_grid}')
