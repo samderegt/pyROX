@@ -13,9 +13,9 @@ class CIA(CrossSections):
     Base class for CIA cross-sections.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, **kwargs):
         # Initialise the CrossSections parent class
-        super().__init__(config)
+        super().__init__(config, **kwargs)
 
     def calculate_tmp_outputs(self, **kwargs):
         """
@@ -221,25 +221,23 @@ class CIA(CrossSections):
 
 class CIA_HITRAN(CIA):
 
-    def download_data(self):
+    def download_data(self, config):
         """
         Download CIA data from HITRAN.
         """
 
         print('\nDownloading CIA data from HITRAN')
 
-        files = []
-        for url in self.config.urls:
-            file = utils.wget_if_not_exist(url, self.config.input_dir)
-            files.append(file)
-        
-    def __init__(self, config):
+        for url in config.urls:
+            file = utils.wget_if_not_exist(url, config.input_data_dir)
+    
+    def __init__(self, config, **kwargs):
 
         print('-'*60)
         print('  Collision-Induced Absorption from HITRAN')
         print('-'*60+'\n')
         
-        super().__init__(config) # Initialise the parent CIA class
+        super().__init__(config, **kwargs) # Initialise the parent CIA class
 
     def _read_absorption_coefficients(self, file):
         """
@@ -298,14 +296,15 @@ class CIA_HITRAN(CIA):
         return T_grid, abs_coeff_k, abs_coeff_alpha
 
 class CIA_Borysow(CIA):
-    def __init__(self, config):
+    def __init__(self, config, **kwargs):
         
         print('-'*60)
         print('  Collision-Induced Absorption from Borysow')
         print('-'*60+'\n')
-        super().__init__(config) # Initialise the parent CIA class
 
-    def download_data(self):
+        super().__init__(config, **kwargs) # Initialise the parent CIA class
+
+    def download_data(self, config):
         raise NotImplementedError('Please download the data manually from https://www.astro.ku.dk/~aborysow/programs/')
 
     def _read_absorption_coefficients(self, file):

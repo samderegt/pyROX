@@ -1,5 +1,6 @@
 import numpy as np
 
+import warnings
 import wget
 import pathlib
 import h5py
@@ -40,7 +41,11 @@ def wget_if_not_exist(url, out_dir, out_name=None):
         print(f'  Downloading from \"{url}\"')
     
     # Download and rename
-    tmp_file = wget.download(url, out=str(out_dir))
+    try:
+        tmp_file = wget.download(url, out=str(out_dir))
+    except:
+        warnings.warn(f'Failed to download from \"{url}\"')
+        return
     print()
     tmp_file = pathlib.Path(tmp_file)
 
@@ -131,10 +136,10 @@ def units_warning(config):
 
         keys_units_to_warn.append((key, unit))
 
-    import warnings
     warnings.warn('Please make sure that the following parameters are given in the expected units:')
     for key, unit in keys_units_to_warn:
         print(f'  - {key} [{unit}]')
+    print()
 
 def find_nearest(a, b):
 

@@ -5,26 +5,27 @@ import itertools
 from utils import sc
 import utils
 
-def load_data_object(config):
+def load_data_object(config, **kwargs):
     """
     Load the data object from the given configuration.
     """
     
     database = getattr(config, 'database', '').lower()
 
-    import cia
+    import cia, line_by_line
     if database == 'cia_hitran':
-        return cia.CIA_HITRAN(config)
+        return cia.CIA_HITRAN(config, **kwargs)
     elif database == 'cia_borysow':
-        return cia.CIA_Borysow(config)
+        return cia.CIA_Borysow(config, **kwargs)
 
-    import lines
     if database == 'exomol':
-        return lines.ExoMol(config)
+        return line_by_line.ExoMol(config, **kwargs)
     elif database in ['hitemp', 'hitran']:
-        return lines.HITEMP(config)
-    elif database in ['vald', 'kurucz']:
-        return lines.VALD_Kurucz(config)
+        return line_by_line.HITRAN(config, **kwargs)
+    elif database == 'kurucz':
+        return line_by_line.Kurucz(config, **kwargs)
+    elif database == 'vald':
+        return line_by_line.VALD(config, **kwargs)
 
     raise NotImplementedError(f"Database '{config.database}' not implemented.")
 
@@ -39,8 +40,13 @@ class CrossSections:
         """Apply a mask to the given arrays."""
         return [np.compress(mask, array, **kwargs) for array in arrays]
 
-    def __init__(self, config):
+    def __init__(self, config, download=False):
 
+        self.database = config.database.lower()
+        if download:
+            # First download the data
+            self.download_data(config)
+            
         # Read the common variables
         self._read_from_config(config)
 
@@ -223,7 +229,7 @@ class CrossSections:
         Parameters:
         config (dict): Configuration dictionary.
         """
-
+        print('\nReading parameters from the configuration file')
         self.config = config
         utils.units_warning(self.config)
         
@@ -272,6 +278,4 @@ class CrossSections:
         self.delta_nu = (self.nu_max-self.nu_min) / (self.N_grid-1)
         self.nu_grid  = np.linspace(self.nu_min, self.nu_max, num=self.N_grid, endpoint=True)
         
-        self.wave_grid = sc.c/self.nu_grid
-
-        #print(f'\nGenerated wavelength grid of {N_grid} points from {wave_min*1e6:.3f} to {wave_max*1e6:.3f} um')
+        self.wave_grid = sc.c/self.nu_grid # [s^-1] -> [m]

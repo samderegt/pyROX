@@ -26,9 +26,7 @@ if __name__ == '__main__':
     utils.print_welcome_message()
 
     # Perform the requested operations
-    data = cross_sections.load_data_object(config)
-    if args.download:
-        data.download_data()
+    data = cross_sections.load_data_object(config, download=args.download)
     if args.cross_sections:
         data.calculate_tmp_outputs()
     if args.save:
