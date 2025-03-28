@@ -239,7 +239,7 @@ class Broaden_Gharib_Nezhad_ea_2021:
         Returns:
         float: Broadening coefficient.
         """
-        return self.Pade_equation(J, a=self.a_H2, b=self.b_H2)
+        return self.Pade_equation(J, a=self.a_H2, b=self.b_H2) * (1e2*sc.c) # [cm^-1] -> [s^-1]
     
     def gamma_He(self, J):
         """
@@ -251,4 +251,4 @@ class Broaden_Gharib_Nezhad_ea_2021:
         Returns:
         float: Broadening coefficient.
         """
-        return self.Pade_equation(J, a=self.a_He, b=self.b_He)
+        return self.Pade_equation(J, a=self.a_He, b=self.b_He) * (1e2*sc.c) # [cm^-1] -> [s^-1]

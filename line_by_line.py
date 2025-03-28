@@ -4,6 +4,8 @@ from pandas import read_fwf, read_csv
 import pathlib
 import warnings
 
+from tqdm import tqdm
+
 from cross_sections import CrossSections
 from utils import sc
 import utils
@@ -196,6 +198,10 @@ class LineByLine(CrossSections):
             self.pressure_broadening_info[perturber]['J'] = \
                 np.array(broadening_params[3])[mask_diet]
 
+        for perturber, info in self.pressure_broadening_info.items():
+            self.pressure_broadening_info[perturber]['gamma'] = \
+                np.array(info['gamma'], dtype=float)
+
         print(f'  Pressure broadening info:')
         self.mean_mass, VMR_total = 0., 0.
         for perturber, info in self.pressure_broadening_info.items():
@@ -203,6 +209,10 @@ class LineByLine(CrossSections):
             print(f'    - {perturber}: VMR={VMR:.2f}, mass={mass/sc.amu:.2f} amu | {method}')
             self.mean_mass += info['VMR']*info['mass'] # [kg]
             VMR_total += info['VMR']
+
+            # Convert gamma to SI units [cm^-1] -> [s^-1]
+            if method != 'function':
+                self.pressure_broadening_info[perturber]['gamma'] = info['gamma'] * 1e2*sc.c
         
         if VMR_total > 1.0:
             raise ValueError('Total volume mixing ratio of perturbers exceeds 1.0.')
@@ -224,11 +234,85 @@ class LineByLine(CrossSections):
         self.compute_partition_function = \
             lambda T: np.interp(T, partition_function[:,0], partition_function[:,1])
 
-    def save_merged_outputs(self, **kwargs):
+    def _check_if_output_exists(self, input_files):
         """
-        Merge the temporary files and save the final output. Same for all LineByLine classes.
+        Check if the output files already exist.
         """
-        raise NotImplementedError
+        overwrite_all = False
+        output_files = []
+        for i, input_file in enumerate(input_files):
+            # Check if the transition file exists
+            input_file = pathlib.Path(input_file)
+            
+            # Check if the temporary output file already exists
+            print(f'_{input_file.stem}.hdf5')
+            print(self.tmp_output_basename)
+            output_file = pathlib.Path(
+                str(self.tmp_output_basename).replace('.hdf5', f'_{input_file.stem}.hdf5')
+            )
+
+            if output_file.exists() and not overwrite_all:
+                # Ask the user if they want to overwrite the file
+                response = ''
+                while response not in ['y', 'yes', 'n', 'no', 'all']:
+                    response = input(f'  Warning: Temporary output file \"{output_file}\" already exists. Overwrite? (yes/no/all): ')
+                    response = response.strip().lower()
+                    if response in ['no', 'n']:
+                        raise FileExistsError(f'Not overwriting existing file: \"{output_file}\".')
+                    elif response in ['yes', 'y']:
+                        break
+                    elif response == 'all':
+                        overwrite_all = True
+                        break
+                    else:
+                        print('  Invalid input. Please enter \"yes\", \"no\", or \"all\".')
+                        continue
+            output_files.append(output_file)
+        return output_files
+        
+    def loop_over_PT_grid(self, function, show_progress_bar=True, **kwargs):
+        
+        # Make a nice progress bar
+        pbar_kwargs = dict(
+            total=self.N_PT, disable=(not show_progress_bar), 
+            bar_format='{l_bar}{bar:8}{r_bar}{bar:-8b}', 
+        )
+        with tqdm(**pbar_kwargs) as pbar:
+
+            # Loop over all PT-points
+            for idx_P, P in enumerate(self.P_grid):
+                for idx_T, T in enumerate(self.T_grid):
+
+                    pbar.set_postfix(P='{:.0e} bar'.format(P*1e-5), T='{:.0f} K'.format(T), refresh=False)
+                    #func(idx_P, P, idx_T, T, **kwargs)
+                    pbar.update(1)
+
+    def compute_cross_section(self, nu_0, S_0, E_low, P, T):
+        """
+        Compute the cross-section.
+        """
+        raise NotImplementedError('Cross-section computation not implemented.')
+
+    def calculate_tmp_outputs(self, **kwargs):
+        # TODO: before computing, check if output file already exists, 
+        # allow exit, overwrite, overwrite-all
+        print('\nCalculating cross-sections')
+
+        transitions_files = self.config.files.get('transitions', None)
+        if transitions_files is None:
+            raise ValueError('No transitions files specified in the configuration.')
+        transitions_files = np.atleast_1d(transitions_files)
+
+        # Check if the output files already exist
+        tmp_output_files = self._check_if_output_exists(transitions_files)
+
+        for input_file, tmp_output_file in zip(transitions_files, tmp_output_files):
+            
+            # Compute the cross-sections
+            self._read_transitions_in_chunks(input_file, tmp_output_file, **kwargs)
+
+            # Temporarily save the data
+            # TODO: ...
     
     def plot_merged_outputs(self, **kwargs):
         """
@@ -275,9 +359,63 @@ class HITRAN(LineByLine):
         # Read the isotope information
         self.isotope_idx       = getattr(config, 'isotope_idx', 1)
         self.isotope_abundance = getattr(config, 'isotope_abundance', 1.0)
-    
-    def calculate_tmp_outputs(self, **kwargs):
-        raise NotImplementedError
+
+        # Remove any quantum-number dependency
+        for perturber, info in self.pressure_broadening_info.items():
+            self.pressure_broadening_info[perturber]['gamma'] = np.nanmean(info['gamma'])
+            self.pressure_broadening_info[perturber]['n']     = np.nanmean(info['n'])
+            # Remove 'diet' and 'J' keys if they exist
+            self.pressure_broadening_info[perturber].pop('diet', None)
+            self.pressure_broadening_info[perturber].pop('J', None)
+
+    def _read_transitions_in_chunks(self, input_file, tmp_output_file, **kwargs):
+        """
+        Compute the cross-sections.
+        """
+        input_file = pathlib.Path(input_file)
+        
+        # How to handle bz2-compression
+        compression = input_file.suffix
+        if compression != 'bz2':
+            compression = 'infer' # Likely decompressed
+
+        # Read the transitions file in chunks to prevent memory overloads
+        transitions_in_chunks = read_fwf(
+            input_file, 
+            widths=(2,1,12,10,10,5,5,10,4,8),            
+            header=None, 
+            chunksize=self.N_lines_in_chunk,
+            compression=compression, 
+            )
+        for transitions in transitions_in_chunks:
+
+            transitions = np.array(transitions)
+
+            if self.isotope_idx is not None:
+                # Remove any transitions with non-integer isotope indices
+                transitions = transitions[
+                    np.isin(transitions[:,1].astype(str), list('0123456789'))
+                    ]
+                # Select the isotope index
+                transitions = transitions[transitions[:,1].astype(int)==self.isotope_idx]
+            
+            # Sort lines by wavenumber
+            transtions = transitions[np.argsort(transitions[:,2])]
+
+            # Unit conversion
+            nu_0  = transtions[:,2].astype(float) * 1e2*sc.c        # [cm^-1] -> [s^-1]
+            E_low = transtions[:,7].astype(float) * sc.h*(1e2*sc.c) # [cm^-1] -> [J]
+
+            # [cm^-1/(molec. cm^-2)] -> [s^-1/(molec. m^-2)]
+            S_0 = transtions[:,3].astype(float) * (1e2*sc.c) * 1e-4
+            S_0 /= self.isotope_abundance # Remove terrestrial abundance ratio
+
+            # Compute the cross-sections, looping over the PT-grid
+            self.loop_over_PT_grid(
+                function=self.compute_cross_section,
+                nu_0=nu_0, S_0=S_0, E_low=E_low, 
+            )
+
 
 class ExoMol(LineByLine):
 
@@ -294,7 +432,7 @@ class ExoMol(LineByLine):
 
         raise NotImplementedError
 
-    def calculate_tmp_outputs(self, **kwargs):
+    def _read_transitions_in_chunks(self, input_file, tmp_output_file, **kwargs):
         raise NotImplementedError
 
 class Kurucz(LineByLine):
@@ -367,5 +505,5 @@ class Kurucz(LineByLine):
         # Make interpolation function
         self.compute_partition_function = lambda T: np.interp(T, T_grid, partition_function[:,1])
 
-    def calculate_tmp_outputs(self, **kwargs):
+    def _read_transitions_in_chunks(self, input_file, tmp_output_file, **kwargs):
         raise NotImplementedError

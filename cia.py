@@ -47,8 +47,9 @@ class CIA(CrossSections):
                 abs_coeff_alpha[:,~mask_nu] = 0.
 
             # Temporarily save the data
-            tmp_output_file = str(self.tmp_output_file)
-            tmp_output_file = tmp_output_file.format(pathlib.Path(file).name)
+            tmp_output_file = pathlib.Path(
+                str(self.tmp_output_basename).replace('.hdf5', f'{pathlib.Path(file).stem}.hdf5')
+            )
 
             utils.save_to_hdf5(
                 tmp_output_file, 
@@ -65,42 +66,6 @@ class CIA(CrossSections):
                     'alpha': {'units': 'm^-1 molecule^-2'}
                     }
                 )
-
-    def save_merged_outputs(self, **kwargs):
-        """
-        Merge the temporary files and save the final output. Same for all CIA classes.
-        """
-
-        print('\nMerging temporary files and saving final output')
-
-        # Ask to overwrite the final output file if it already exists
-        response = ''
-        if not self.final_output_file.exists():
-            response = 'yes'
-
-        while response == '':
-            response = input(f'  Warning: Final output file \"{self.final_output_file}\" already exists. Do you want to overwrite it? (yes/no): ')
-            if response == '':
-                continue
-            elif response.lower() not in ['y', 'yes']:
-                raise FileExistsError(f"Not overwriting final output file '{self.final_output_file}'.")
-
-        # Merge the temporary files
-        self.merge_tmp_outputs(keys_to_merge=['k', 'alpha'])
-
-        # Flip arrays to be ascending in wavelength
-        if np.diff(self.merged_datasets['wave'])[0] < 0:
-            self.merged_datasets['wave']  = self.merged_datasets['wave'][::-1]
-            self.merged_datasets['k']     = self.merged_datasets['k'][::-1]
-            self.merged_datasets['alpha'] = self.merged_datasets['alpha'][::-1]
-
-        # Save the merged data
-        print(f'  Saving final output to \"{self.final_output_file}\"')
-        utils.save_to_hdf5(
-            self.final_output_file, 
-            data=self.merged_datasets, 
-            attrs=self.merged_attrs
-            )
 
     def plot_merged_outputs(self, cmap='coolwarm', xscale='log', yscale='log', xlim=None, ylim=None, **kwargs):
         """

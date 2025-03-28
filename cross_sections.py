@@ -60,8 +60,44 @@ class CrossSections:
     def plot_merged_outputs(self, *args, **kwargs):
         raise NotImplementedError("This method should be implemented in the subclass.")
 
-    def save_merged_outputs(self, *args, **kwargs):
-        raise NotImplementedError("This method should be implemented in the subclass.")
+    def save_merged_outputs(self, keys_to_merge=['k','alpha'], **kwargs):
+        """
+        Merge the temporary files and save the final output. 
+        """
+        print('\nMerging temporary files and saving final output')
+
+        # Ask to overwrite the final output file if it already exists
+        response = ''
+        if not self.final_output_file.exists():
+            response = 'yes'
+
+        while response not in ['yes', 'no', 'y', 'n']:
+            response = input(f'  Warning: Final output file \"{self.final_output_file}\" already exists. Overwrite? (yes/no): ')
+            response = response.strip().lower()
+            if response in ['no', 'n']:
+                raise FileExistsError(f'Not overwriting existing file \"{self.final_output_file}\".')
+            elif response in ['yes', 'y']:
+                break
+            else:
+                print('  Invalid input. Please enter \"yes\" or \"no\".')
+                continue
+
+        # Merge the temporary files
+        self.merge_tmp_outputs(keys_to_merge=keys_to_merge)
+
+        # Flip arrays to be ascending in wavelength
+        if np.diff(self.merged_datasets['wave'])[0] < 0:
+            self.merged_datasets['wave']  = self.merged_datasets['wave'][::-1]
+            for key in keys_to_merge:
+                self.merged_datasets[key] = self.merged_datasets[key][::-1]
+
+        # Save the merged data
+        print(f'  Saving final output to \"{self.final_output_file}\"')
+        utils.save_to_hdf5(
+            self.final_output_file, 
+            data=self.merged_datasets, 
+            attrs=self.merged_attrs
+            )
 
     def merge_tmp_outputs(self, keys_to_merge=['xsec'], **kwargs):
         """
@@ -261,11 +297,14 @@ class CrossSections:
         # Temporary output files
         self.tmp_output_dir = self.output_data_dir / 'tmp'
 
-        default = 'xsec_{}.hdf5'
+        default = 'xsec.hdf5'
         if self.database.startswith('cia'):
-            default = 'cia_coeffs_{}.hdf5'
-        self.tmp_output_file = getattr(self.config, 'tmp_output_file', default)
-        self.tmp_output_file = (self.tmp_output_dir / self.tmp_output_file).resolve()
+            default = 'cia_coeffs.hdf5'
+        self.tmp_output_basename = getattr(self.config, 'tmp_output_basename', default)
+        self.tmp_output_basename = (self.tmp_output_dir / self.tmp_output_basename).resolve()
+        # Ensure the prefix ends with '.hdf5'
+        if not self.tmp_output_basename.suffix == '.hdf5':
+            raise ValueError(f'Temporary output \"{self.tmp_output_basename}\" should end with \".hdf5\".')
 
         # Final output file
         default = default.format(self.species)

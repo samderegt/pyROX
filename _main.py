@@ -39,8 +39,8 @@ if __name__ == '__main__':
 
     # Overwrite some parameters from the configuration file
     parser.add_argument(
-        '--tmp_output_file', type=str, default=None, 
-        help='Temporary output file (e.g. xsec_0_10.hdf5).'
+        '--tmp_output_basename', type=str, default=None, 
+        help='Basename of temporary output file (e.g. xsec_new.hdf5).'
         )
 
     # Optionally, overwrite the P and T values
@@ -67,16 +67,18 @@ if __name__ == '__main__':
     # Overwrite some configuration parameters with command line arguments
     config = utils.add_to_config(
         config, 
-        tmp_output_file=args.tmp_output_file, 
+        tmp_output_basename=args.tmp_output_basename, 
         P_grid=args.P_grid, 
         T_grid=args.T_grid, 
-        transition_files_range=args.transition_files_range,
         )
 
     # Perform the requested operations
     data = cross_sections.load_data_object(config, download=args.download)
     if args.calculate:
-        data.calculate_tmp_outputs()
+        data.calculate_tmp_outputs(
+            show_progress_bar=args.show_progress_bar, 
+            transition_files_range=args.transition_files_range
+            )
     if args.save:
         data.save_merged_outputs()
     if args.plot:
