@@ -42,7 +42,7 @@ class CIA(CrossSections):
                     )
 
                 # Remove wavenumbers outside the range
-                mask_nu = masks[1](self.nu_grid/(100.0*sc.c))
+                mask_nu = masks[1](self.nu_grid/(1e2*sc.c))
                 abs_coeff_k[:,~mask_nu]     = 0.
                 abs_coeff_alpha[:,~mask_nu] = 0.
 
@@ -154,9 +154,9 @@ class CIA(CrossSections):
             self.final_output_file, keys_to_read=['wave', 'T', 'k', 'alpha']
             )
 
-        wave_min = 1e6*self.merged_datasets['wave'].min()
-        wave_max = 1e6*self.merged_datasets['wave'].max()
-        resolution = 1e6*sc.c/self.delta_nu # At 1 um
+        wave_min = self.merged_datasets['wave'].min()/sc.micron
+        wave_max = self.merged_datasets['wave'].max()/sc.micron
+        resolution = sc.c/sc.micron/self.delta_nu # At 1 um
 
         # Fill the dictionary
         data['alpha'] = 1e-2*self.merged_datasets['alpha'][::-1,:].T # [m^-1 molecule^-2] -> [cm^-1 molecule^-2], ascending in wavenumber
@@ -235,7 +235,7 @@ class CIA_HITRAN(CIA):
         T_grid   = np.array(T_grid)
 
         # Read absorption coefficients for each temperature
-        abs_coeff_k = np.zeros((len(T_grid), self.N_grid))
+        abs_coeff_k = np.zeros((len(T_grid), self.N_nu))
         for i, (N_native_grid_i, T_i) in enumerate(zip(N_native_grid, T_grid)):
             
             idx_min = 1 + i*(N_native_grid_i+1)
@@ -303,7 +303,7 @@ class CIA_Borysow(CIA):
         nu_native = data[:,0] * 100.0*sc.c # [cm^-1] -> [s^-1]
         abs_coeff_alpha_native = data[:,1:] * 1e2 # [cm^-1 molecule^-2] -> [m^-1 molecule^-2]
 
-        abs_coeff_alpha = np.zeros((len(T_grid), self.N_grid))
+        abs_coeff_alpha = np.zeros((len(T_grid), self.N_nu))
         for i, abs_coeff_alpha_i in enumerate(abs_coeff_alpha_native.T):
 
             # Remove any empty entries

@@ -276,9 +276,9 @@ class CrossSections:
         self.delta_nu = getattr(self.config, 'delta_nu', 0.01)    # [cm^-1]
         
         # Convert to SI units
-        self.wave_min *= 1e-6 # [um] -> [m]
-        self.wave_max *= 1e-6
-        self.delta_nu *= 100.0*sc.c # Change to frequency [cm^-1] -> [s^-1]
+        self.wave_min *= sc.micron # [um] -> [m]
+        self.wave_max *= sc.micron
+        self.delta_nu *= 1e2*sc.c # Change to frequency [cm^-1] -> [s^-1]
         
         # Input/output directories
         self.input_data_dir = getattr(self.config, 'input_data_dir', f'./{self.species}/input_data/')
@@ -319,16 +319,38 @@ class CrossSections:
         self.nu_max = sc.c/self.wave_min # [m] -> [s^-1]
 
         # Number of grid points
-        self.N_grid = int((self.nu_max-self.nu_min)/self.delta_nu) + 1
+        self.N_nu = int((self.nu_max-self.nu_min)/self.delta_nu) + 1
 
         # Not exact value of delta_nu given above, but done to keep final lambda values fixed
-        self.delta_nu = (self.nu_max-self.nu_min) / (self.N_grid-1)
-        self.nu_grid  = np.linspace(self.nu_min, self.nu_max, num=self.N_grid, endpoint=True)
+        self.delta_nu = (self.nu_max-self.nu_min) / (self.N_nu-1)
+        self.nu_grid  = np.linspace(self.nu_min, self.nu_max, num=self.N_nu, endpoint=True)
         
         self.wave_grid = sc.c/self.nu_grid # [s^-1] -> [m]
 
         print('\nWavelength-grid:')
-        print(f'  Wavelength: {self.wave_min*1e6:.2f} - {self.wave_max*1e6:.0f} um')
+        print(f'  Wavelength: {self.wave_min/sc.micron:.2f} - {self.wave_max/sc.micron:.0f} um')
         print(f'  Wavenumber: {self.nu_min/(1e2*sc.c):.0f} - {self.nu_max/(1e2*sc.c):.0f} cm^-1')
         print(f'  Delta nu:   {self.delta_nu/(1e2*sc.c):.3f} cm^-1')
-        print(f'  Number of grid points: {self.N_grid}')
+        print(f'  Number of grid points: {self.N_nu}')
+
+    def _configure_coarse_nu_grid(self, adaptive_delta_nu):
+        
+        # Use the original grid
+        if not self.adaptive_nu_grid:
+            return self.nu_grid, self.delta_nu
+        if self.delta_nu > adaptive_delta_nu:
+            return self.nu_grid, self.delta_nu
+        
+        # Decrease number of points in wavenumber grid
+        inflation_factor = adaptive_delta_nu / self.delta_nu
+        coarse_N_nu = int(self.N_nu/inflation_factor)
+
+        # Expand wavenumber grid slightly
+        delta_nu_ends = adaptive_delta_nu * (inflation_factor-1)/2
+        coarse_nu_grid = np.linspace(
+            self.nu_min-delta_nu_ends, self.nu_max+delta_nu_ends, 
+            num=coarse_N_nu, endpoint=True
+        )
+        coarse_delta_nu = coarse_nu_grid[1] - coarse_nu_grid[0]
+
+        return coarse_nu_grid, coarse_delta_nu

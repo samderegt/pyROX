@@ -1,5 +1,7 @@
 import numpy as np
 from pandas import read_fwf, read_csv
+from scipy.interpolate import interp1d
+from scipy.special import wofz
 
 import pathlib
 import warnings
@@ -10,7 +12,176 @@ from cross_sections import CrossSections
 from utils import sc
 import utils
 
-class LineByLine(CrossSections):
+class LineProfileHelper:
+
+    def line_strength(self, T, S_0, E_low, nu_0):
+
+        # Partition function
+        q = self.calculate_partition_function(T)
+
+        # Gordon et al. (2017) (E_low: [m^-1]; nu_0: [s^-1])
+        S = (
+            S_0 * (self.q_0/q) * np.exp(E_low/sc.k*(1/self.T_0-1/T)) *
+            (1-np.exp(-sc.h*nu_0/(sc.k*T))) / (1-np.exp(-sc.h*nu_0/(sc.k*self.T_0)))
+        )
+        return S
+
+    def normalise_wing_cutoff(self, S, cutoff_distance, gamma_L):
+        # Eq. A6 Lacy & Burrows (2023)
+        return S / ((2/np.pi)*np.arctan(cutoff_distance/gamma_L))
+
+    def gamma_vdW(self, P, T):
+
+        # TODO: Implement the atomic broadening
+        # ...
+
+        # Van der Waals broadening
+        gamma_vdW = 0
+        for perturber, info in self.pressure_broadening_info.items():
+            # Get the broadening parameters
+            VMR = info['VMR']
+            gamma = info['gamma'] # [s^-1]
+            n = info['n']
+
+            # Calculate the broadening parameter
+            gamma_vdW += gamma * (T/self.T_0)**n * (P/sc.atm) # [s^-1]
+
+        return gamma_vdW
+
+    def gamma_N(self, nu_0, log_gamma_N=None):
+
+        # Natural broadening
+        gamma_N = 0.222 * (nu_0/(1e2*sc.c))**2 / (4*np.pi*sc.c) # [s^-1]
+
+        if log_gamma_N is not None:
+            # Natural damping constant is given (for atoms)
+            mask_valid = (log_gamma_N != 0)
+            gamma_N[mask_valid] = 10**log_gamma_N[mask_valid] / (4*np.pi) # [s^-1]
+
+        return gamma_N
+
+    def gamma_G(self, T, nu_0):
+        # Doppler broadening
+        return np.sqrt(2*sc.k*T/self.mass) * nu_0/sc.c # [s^-1]
+
+    def gamma_L(self, gamma_vdW, gamma_N):
+        # Lorentz width
+        return gamma_vdW + gamma_N # [s^-1]
+
+    def gamma_V(self, gamma_G, gamma_L):
+        # Voigt width
+        return 0.5346*gamma_L+np.sqrt(0.2166*gamma_L**2 + gamma_G**2) # [s^-1]
+
+    def apply_local_cutoff(self, S, nu_0, factor):
+
+        # Round to zero-th decimal
+        nu_bin = np.around((nu_0-self.nu_min)/self.delta_nu_local_cutoff).astype(int)
+
+        # Upper and lower indices of lines within bins
+        _, nu_bin_idx = np.unique(nu_bin, return_index=True)
+        nu_bin_idx    = np.append(nu_bin_idx, len(nu_bin))
+
+        for k in range(len(nu_bin_idx)-1):
+            # Cumulative sum of lines in bin
+            S_range = S[nu_bin_idx[k]:nu_bin_idx[k+1]]
+            S_sort  = np.sort(S_range)
+            S_summed = np.cumsum(S_sort)
+
+            # Lines contributing less than 'factor' to total strength
+            i_search = np.searchsorted(S_summed, factor*S_summed[-1])
+            S_cutoff = S_sort[i_search]
+
+            # Add weak line-strengths to strongest line
+            sum_others = np.sum(S_range[S_range<S_cutoff])
+            S_range[np.argmax(S_range)] += sum_others
+
+            # Ignore weak lines
+            S_range[S_range<S_cutoff] = 0.
+
+            S[nu_bin_idx[k]:nu_bin_idx[k+1]] = S_range
+
+        return S
+
+    def calculate_line_profiles_in_chunks(
+            self, 
+            nu_0, 
+            S, 
+            gamma_L, 
+            gamma_G, 
+            nu_grid, 
+            delta_nu, 
+            #nu_line, 
+            #idx_to_insert, 
+            #cutoff_dist_n, 
+            wing_cutoff_distance, 
+            N_lines_in_chunk=200, 
+            ):
+
+        #print(f'  Number of lines: {len(nu_0)}')
+
+        # Indices where lines should be inserted
+        idx_to_insert = np.searchsorted(nu_grid, nu_0) - 1
+
+        # Wing-length in number of grid points
+        wing_length = int(np.around(wing_cutoff_distance/delta_nu))
+
+        # Array of wavenumbers from line-center
+        nu_line = np.linspace(
+            -wing_length*delta_nu, wing_length*delta_nu, 2*wing_length+1, endpoint=True
+            )
+        nu_line = nu_line[None,:]
+
+        N_nu_grid = len(nu_grid)
+        N_nu_line = nu_line.shape[1]
+
+        # Relative width of Lorentzian vs. Gaussian
+        a = gamma_L / gamma_G # Gandhi et al. (2020)
+
+        # Only consider number of lines at a time
+        N_chunks = int(np.ceil(len(S)/N_lines_in_chunk))
+
+        sigma = np.zeros_like(nu_grid)
+        for ch in range(N_chunks):
+            
+            # Upper and lower indices of lines in current chunk
+            idx_chunk_l = int(ch*N_lines_in_chunk)
+            idx_chunk_h = idx_chunk_l + N_lines_in_chunk
+            idx_chunk_h = np.minimum(idx_chunk_h, len(S)) # At last chunk
+
+            # Indices of nu_grid_coarse to insert current lines
+            idx_to_insert_chunk = idx_to_insert[idx_chunk_l:idx_chunk_h]
+
+            # Lines in current chunk | (N_lines,1)
+            nu_0_chunk    = nu_0[idx_chunk_l:idx_chunk_h,None]
+            gamma_G_chunk = gamma_G[idx_chunk_l:idx_chunk_h,None]
+            a_chunk = a[idx_chunk_l:idx_chunk_h,None]
+            S_chunk = S[idx_chunk_l:idx_chunk_h,None]
+
+            # Correct for coarse grid | (N_lines,1)
+            nu_grid_chunk = nu_grid[idx_to_insert_chunk,None]
+
+            # Eq. 10 (Gandhi et al. 2020) | (N_lines,N_wave[cut])
+            u = ((nu_line+nu_grid_chunk) - nu_0_chunk) / gamma_G_chunk
+
+            # (Scaled) Faddeeva function for Voigt profiles | (N_lines,N_wave[cut])
+            sigma_chunk = S_chunk * np.real(wofz(u+a_chunk*1j)) / (gamma_G_chunk*np.sqrt(np.pi))
+
+            # Upper and lower index of these lines in sigma_coarse
+            idx_sigma_l = np.maximum(0, idx_to_insert_chunk-wing_length)
+            idx_sigma_h = np.minimum(N_nu_grid, idx_to_insert_chunk+wing_length+1)
+
+            # Upper and lower index of these lines in sigma_ch
+            idx_sigma_chunk_l = np.maximum(0, wing_length-idx_to_insert_chunk)
+            idx_sigma_chunk_h = np.maximum(N_nu_line, idx_to_insert_chunk-N_nu_grid + wing_length)
+
+            # Loop over each line profile
+            for i, sigma_i in enumerate(sigma_chunk):
+                # Add line to total cross-section
+                sigma[idx_sigma_l[i]:idx_sigma_h[i]] += sigma_i[idx_sigma_chunk_l[i]:idx_sigma_chunk_h[i]]
+                
+        return sigma
+    
+class LineByLine(CrossSections, LineProfileHelper):
     """
     Base class for line-by-line cross-sections.
     """
@@ -35,23 +206,23 @@ class LineByLine(CrossSections):
         
         # Reference temperature and partition function
         self.T_0 = getattr(self.config, 'T_0', 296.)
-        self.q_0 = self.compute_partition_function(self.T_0)
+        self.q_0 = self.calculate_partition_function(self.T_0)
 
         # Read the cutoff parameters
         wing_cutoff = getattr(self.config, 'wing_cutoff', None) # [cm^-1]
         if wing_cutoff is None:
             # Use Gharib-Nezhad et al. (2024) as default
-            wing_cutoff = lambda _, P: 25 if P<=200 else 100
+            wing_cutoff = lambda gamma_V, P: 25 if P<=200 else 100
 
         # Convert input [s^-1]->[cm^-1] and [Pa]->[bar], and output [cm^-1]->[s^-1]
-        self.wing_cutoff = lambda gamma_V, P: wing_cutoff(gamma_V/(1e2*sc.c), P*1e-5) * 1e2*sc.c
+        self.wing_cutoff = lambda gamma_V, P: wing_cutoff(gamma_V/(1e2*sc.c), P/sc.bar) * 1e2*sc.c
         
         # Maximum separation, in case of pressure-dependent cutoff
         self.wing_cutoff_max = getattr(self.config, 'wing_cutoff_max', np.inf) # [cm^-1]
         self.wing_cutoff_max *= 1e2*sc.c # [cm^-1] -> [s^-1]
 
         # Line-strength cutoffs
-        self.global_cutoff = getattr(self.config, 'global_cutoff', None) # [cm^1 molecule^-1]
+        self.global_cutoff = getattr(self.config, 'global_cutoff', 0.) # [cm^1 molecule^-1]
         self.global_cutoff *= 1e-2 # [m^1 molecule^-1]
 
         self.local_cutoff = getattr(self.config, 'local_cutoff', None)  # [fraction of cumulative]
@@ -63,7 +234,7 @@ class LineByLine(CrossSections):
         #self._set_nu_grid(self.config)
         self.adaptive_nu_grid = getattr(self.config, 'adaptive_nu_grid', False)
 
-        # (P,T)-grid to compute cross-sections on
+        # (P,T)-grid to calculate cross-sections on
         self.P_grid = np.atleast_1d(self.config.P_grid) * 1e5 # [bar] -> [Pa]
         self.T_grid = np.atleast_1d(self.config.T_grid)
         self.N_PT = len(self.P_grid) * len(self.T_grid)
@@ -230,9 +401,12 @@ class LineByLine(CrossSections):
             raise ValueError('Partition function file must be provided in the configuration file.')
         partition_function = np.loadtxt(file)
 
-        # Make interpolation function
-        self.compute_partition_function = \
-            lambda T: np.interp(T, partition_function[:,0], partition_function[:,1])
+        # Make interpolation function, extrapolate outside temperature-range
+        interpolation_function = interp1d(
+            x=partition_function[:,0], y=partition_function[:,1], 
+            kind='linear', fill_value='extrapolate'
+            )
+        self.calculate_partition_function = interpolation_function
 
     def _check_if_output_exists(self, input_files):
         """
@@ -245,8 +419,6 @@ class LineByLine(CrossSections):
             input_file = pathlib.Path(input_file)
             
             # Check if the temporary output file already exists
-            print(f'_{input_file.stem}.hdf5')
-            print(self.tmp_output_basename)
             output_file = pathlib.Path(
                 str(self.tmp_output_basename).replace('.hdf5', f'_{input_file.stem}.hdf5')
             )
@@ -275,7 +447,7 @@ class LineByLine(CrossSections):
         # Make a nice progress bar
         pbar_kwargs = dict(
             total=self.N_PT, disable=(not show_progress_bar), 
-            bar_format='{l_bar}{bar:8}{r_bar}{bar:-8b}', 
+            bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}', 
         )
         with tqdm(**pbar_kwargs) as pbar:
 
@@ -284,14 +456,65 @@ class LineByLine(CrossSections):
                 for idx_T, T in enumerate(self.T_grid):
 
                     pbar.set_postfix(P='{:.0e} bar'.format(P*1e-5), T='{:.0f} K'.format(T), refresh=False)
-                    #func(idx_P, P, idx_T, T, **kwargs)
+                    function(P, T, **kwargs)
                     pbar.update(1)
+    
+    def calculate_cross_sections(self, P, T, nu_0, S_0, E_low, delta_P=0., **kwargs):
+        """
+        Compute the cross-sections.
+        """
 
-    def compute_cross_section(self, nu_0, S_0, E_low, P, T):
-        """
-        Compute the cross-section.
-        """
-        raise NotImplementedError('Cross-section computation not implemented.')
+        # Select only the lines within the wavelength range
+        nu_0, S_0, E_low = self.mask_arrays(
+            [nu_0, S_0, E_low], mask=(nu_0>self.nu_min) & (nu_0<self.nu_max)
+            )
+        if len(S_0) == 0:
+            return # No more lines
+        
+        # Get the line-widths
+        gamma_N   = self.gamma_N(nu_0) # Lorentzian components
+        gamma_vdW = self.gamma_vdW(P, T)
+        gamma_L   = self.gamma_L(gamma_vdW, gamma_N)
+        gamma_G = self.gamma_G(T, nu_0) # Gaussian component
+
+        # Get the line-strengths
+        S = self.line_strength(T, S_0, E_low, nu_0)
+
+        # Apply local and global line-strength cutoffs
+        S = self.apply_local_cutoff(S, nu_0, self.local_cutoff)
+        S_min = max([0., self.global_cutoff])
+        nu_0, S, gamma_L, gamma_G = self.mask_arrays(
+            [nu_0, S, gamma_L, gamma_G], mask=(S>S_min)
+        )
+        if len(S) == 0:
+            return # No more lines
+
+        # Change to a coarse grid if lines are substantially broadened
+        gamma_V = self.gamma_V(gamma_G, gamma_L) # Voigt width
+        nu_grid_to_use, delta_nu_to_use = \
+            self._configure_coarse_nu_grid(adaptive_delta_nu=np.mean(gamma_V)/6)
+
+        # Indices where lines should be inserted
+        idx_to_insert = np.searchsorted(nu_grid_to_use, nu_0) - 1
+        
+        # Wing cutoff from given lambda-function
+        wing_cutoff_distance = self.wing_cutoff(np.mean(gamma_V), P) # [s^-1]
+        wing_cutoff_distance = np.minimum(wing_cutoff_distance, self.wing_cutoff_max) # [s^-1]
+
+        # Account for the lost line-strength
+        S = self.normalise_wing_cutoff(S, wing_cutoff_distance, gamma_L)
+
+        # Compute the line-profiles in chunks
+        sigma = self.calculate_line_profiles_in_chunks(
+            nu_0=nu_0, 
+            S=S, 
+            gamma_L=gamma_L, 
+            gamma_G=gamma_G, 
+            nu_grid=nu_grid_to_use, 
+            delta_nu=delta_nu_to_use, 
+            #idx_to_insert=idx_to_insert, 
+            wing_cutoff_distance=wing_cutoff_distance, 
+        )
 
     def calculate_tmp_outputs(self, **kwargs):
         # TODO: before computing, check if output file already exists, 
@@ -382,40 +605,38 @@ class HITRAN(LineByLine):
         # Read the transitions file in chunks to prevent memory overloads
         transitions_in_chunks = read_fwf(
             input_file, 
-            widths=(2,1,12,10,10,5,5,10,4,8),            
+            widths=(2,1,12,10,10,5,5,10,4,8), 
             header=None, 
-            chunksize=self.N_lines_in_chunk,
+            chunksize=self.N_lines_in_chunk, 
             compression=compression, 
             )
         for transitions in transitions_in_chunks:
-
+            isotope_indices = np.array(transitions.iloc[:,1])
             transitions = np.array(transitions)
 
             if self.isotope_idx is not None:
-                # Remove any transitions with non-integer isotope indices
-                transitions = transitions[
-                    np.isin(transitions[:,1].astype(str), list('0123456789'))
-                    ]
                 # Select the isotope index
+                transitions = transitions[np.isin(isotope_indices.astype(str), list('0123456789'))]
                 transitions = transitions[transitions[:,1].astype(int)==self.isotope_idx]
             
             # Sort lines by wavenumber
-            transtions = transitions[np.argsort(transitions[:,2])]
+            transitions = transitions[np.argsort(transitions[:,2])]
 
             # Unit conversion
-            nu_0  = transtions[:,2].astype(float) * 1e2*sc.c        # [cm^-1] -> [s^-1]
-            E_low = transtions[:,7].astype(float) * sc.h*(1e2*sc.c) # [cm^-1] -> [J]
+            nu_0  = transitions[:,2].astype(float) * 1e2*sc.c        # [cm^-1] -> [s^-1]
+            E_low = transitions[:,7].astype(float) * sc.h*(1e2*sc.c) # [cm^-1] -> [J]
 
             # [cm^-1/(molec. cm^-2)] -> [s^-1/(molec. m^-2)]
-            S_0 = transtions[:,3].astype(float) * (1e2*sc.c) * 1e-4
+            S_0 = transitions[:,3].astype(float) * (1e2*sc.c) * 1e-4
             S_0 /= self.isotope_abundance # Remove terrestrial abundance ratio
 
+            #print(f'  Number of lines: {len(nu_0)}')
             # Compute the cross-sections, looping over the PT-grid
             self.loop_over_PT_grid(
-                function=self.compute_cross_section,
+                function=self.calculate_cross_sections,
                 nu_0=nu_0, S_0=S_0, E_low=E_low, 
+                **kwargs
             )
-
 
 class ExoMol(LineByLine):
 
@@ -499,11 +720,13 @@ class Kurucz(LineByLine):
         E = E[:idx_u]
 
         # Partition function, sum over states, keep temperature-axis
-        # TODO: fix units of c2
-        partition_function = np.array([np.sum(g*np.exp(-sc.c2*E/T_i)) for T_i in T_grid])
+        partition_function = np.array([np.sum(g*np.exp(-sc.c2*1e2*E/T_i)) for T_i in T_grid])
 
-        # Make interpolation function
-        self.compute_partition_function = lambda T: np.interp(T, T_grid, partition_function[:,1])
+        # Make interpolation function, extrapolate outside temperature-range
+        interpolation_function = interp1d(
+            x=T_grid, y=partition_function, kind='linear', fill_value='extrapolate'
+            )
+        self.calculate_partition_function = interpolation_function
 
     def _read_transitions_in_chunks(self, input_file, tmp_output_file, **kwargs):
         raise NotImplementedError
