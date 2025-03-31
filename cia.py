@@ -67,6 +67,9 @@ class CIA(CrossSections):
                     }
                 )
 
+    def save_merged_outputs(self, **kwargs):
+        super().save_merged_outputs(keys_to_merge=['k','alpha'], **kwargs)
+
     def plot_merged_outputs(self, cmap='coolwarm', xscale='log', yscale='log', xlim=None, ylim=None, **kwargs):
         """
         Plot the merged outputs. Same for all CIA classes.

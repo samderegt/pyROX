@@ -110,9 +110,6 @@ class LineProfileHelper:
             gamma_G, 
             nu_grid, 
             delta_nu, 
-            #nu_line, 
-            #idx_to_insert, 
-            #cutoff_dist_n, 
             wing_cutoff_distance, 
             N_lines_in_chunk=200, 
             ):
@@ -172,7 +169,7 @@ class LineProfileHelper:
 
             # Upper and lower index of these lines in sigma_ch
             idx_sigma_chunk_l = np.maximum(0, wing_length-idx_to_insert_chunk)
-            idx_sigma_chunk_h = np.maximum(N_nu_line, idx_to_insert_chunk-N_nu_grid + wing_length)
+            idx_sigma_chunk_h = np.minimum(N_nu_line, wing_length-idx_to_insert_chunk+N_nu_grid)
 
             # Loop over each line profile
             for i, sigma_i in enumerate(sigma_chunk):
@@ -242,8 +239,6 @@ class LineByLine(CrossSections, LineProfileHelper):
         print('\nPT-grid:')
         print(f'  P: {self.P_grid/1e5} bar')
         print(f'  T: {self.T_grid} K')
-
-        #self.sigma = np.zeros((len(self.nu_grid), len(self.P_grid), len(self.T_grid)))
 
     def _read_equation_of_state(self):
         """
@@ -408,11 +403,10 @@ class LineByLine(CrossSections, LineProfileHelper):
             )
         self.calculate_partition_function = interpolation_function
 
-    def _check_if_output_exists(self, input_files):
+    def _check_if_output_exists(self, input_files, overwrite_all=False):
         """
         Check if the output files already exist.
         """
-        overwrite_all = False
         output_files = []
         for i, input_file in enumerate(input_files):
             # Check if the transition file exists
@@ -512,13 +506,18 @@ class LineByLine(CrossSections, LineProfileHelper):
             gamma_G=gamma_G, 
             nu_grid=nu_grid_to_use, 
             delta_nu=delta_nu_to_use, 
-            #idx_to_insert=idx_to_insert, 
             wing_cutoff_distance=wing_cutoff_distance, 
         )
+        if len(nu_grid_to_use) != len(self.nu_grid):
+            # Interpolate to the original grid
+            sigma = np.interp(self.nu_grid, nu_grid_to_use, sigma)
 
-    def calculate_tmp_outputs(self, **kwargs):
-        # TODO: before computing, check if output file already exists, 
-        # allow exit, overwrite, overwrite-all
+        # Add to the total array
+        idx_P = np.searchsorted(self.P_grid, P)
+        idx_T = np.searchsorted(self.T_grid, T)
+        self.sigma[:,idx_P,idx_T] += sigma
+
+    def calculate_tmp_outputs(self, overwrite=False, **kwargs):
         print('\nCalculating cross-sections')
 
         transitions_files = self.config.files.get('transitions', None)
@@ -527,21 +526,102 @@ class LineByLine(CrossSections, LineProfileHelper):
         transitions_files = np.atleast_1d(transitions_files)
 
         # Check if the output files already exist
-        tmp_output_files = self._check_if_output_exists(transitions_files)
+        tmp_output_files = self._check_if_output_exists(
+            transitions_files, overwrite_all=overwrite
+            )
 
         for input_file, tmp_output_file in zip(transitions_files, tmp_output_files):
             
             # Compute the cross-sections
+            self.sigma = np.zeros(
+                (len(self.nu_grid), len(self.P_grid), len(self.T_grid)), dtype=float
+                )
             self._read_transitions_in_chunks(input_file, tmp_output_file, **kwargs)
 
+            if np.all(self.sigma == 0.):
+                continue # No lines in this file, no need to save
+
+            self.sigma[(self.sigma == 0.)] = 1e-250
+
             # Temporarily save the data
-            # TODO: ...
-    
-    def plot_merged_outputs(self, **kwargs):
+            utils.save_to_hdf5(
+                tmp_output_file, 
+                data={
+                    'wave': self.wave_grid,
+                    'P': self.P_grid,
+                    'T': self.T_grid,
+                    'xsec': self.sigma, 
+                },
+                attrs={
+                    'wave': {'units': 'm'},
+                    'P': {'units': 'Pa'},
+                    'T': {'units': 'K'},
+                    'xsec': {'units': 'm^2 molecule^-1'},
+                }
+            )
+
+    def save_merged_outputs(self, **kwargs):
+        super().save_merged_outputs(keys_to_merge=['xsec'], **kwargs)
+
+    def plot_merged_outputs(self, cmaps=['coolwarm','viridis'], xscale='log', yscale='log', xlim=None, ylim=None, **kwargs):
         """
         Plot the merged outputs. Same for all LineByLine classes.
         """
-        raise NotImplementedError
+        
+        print('\nPlotting cross-sections')
+
+        self.merged_datasets = utils.read_from_hdf5(
+            self.final_output_file, keys_to_read=['wave', 'P', 'T', 'xsec']
+        )
+
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(9,6), nrows=2, sharex=True, sharey=True)
+
+        # Plot for certain temperatures
+        T_to_plot = kwargs.get('T_to_plot', self.merged_datasets['T'])
+        indices_T, T_to_plot = utils.find_nearest(self.merged_datasets['T'], T_to_plot)
+        indices_T = np.unique(indices_T)
+        T_to_plot = np.unique(T_to_plot)
+
+        idx_P = np.searchsorted(self.merged_datasets['P'], 1e5) # 1 bar
+
+        for idx_T, T in zip(indices_T, T_to_plot):
+            if len(T_to_plot)==1:
+                c = plt.get_cmap(cmaps[0])(0.5)
+            else:
+                c = plt.get_cmap(cmaps[0])((T-T_to_plot.min())/(T_to_plot.max()-T_to_plot.min()))
+
+            xsec = self.merged_datasets['xsec'][:,idx_P,idx_T]
+            ax[0].plot(self.merged_datasets['wave'], xsec, c=c, lw=1, label=f'T={T:.0f} K')
+
+        # Plot for certain pressures
+        P_to_plot = kwargs.get('P_to_plot', self.merged_datasets['P'])
+        indices_P, P_to_plot = utils.find_nearest(self.merged_datasets['P'], P_to_plot)
+        indices_P = np.unique(indices_P)
+        P_to_plot = np.unique(P_to_plot)
+
+        idx_T = np.searchsorted(self.merged_datasets['T'], 1000.)
+
+        for idx_P, P in zip(indices_P, P_to_plot):
+            c = plt.get_cmap(cmaps[1])(np.log10(P/P_to_plot.min())/np.log10(P_to_plot.max()/P_to_plot.min()))
+
+            xsec = self.merged_datasets['xsec'][:,idx_P,idx_T]
+            ax[1].plot(self.merged_datasets['wave'], xsec, c=c, lw=1, label=f'P={P/sc.bar:.0e} bar')
+
+        if ylim is None:
+            xsec = self.merged_datasets['xsec'][self.merged_datasets['xsec']>1e-250]
+            ylim = (np.nanpercentile(xsec, 3), np.nanmax(xsec)*10)
+
+        ax[0].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, ylabel='xsec [m^2 molecule^-1]')
+        ax[1].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, xlabel='wavelength [m]', ylabel='xsec [m^2 molecule^-1]')
+        
+        handles, _ = ax[0].get_legend_handles_labels()
+        ncols = 1 + len(handles)//8
+        ax[0].legend(loc='upper right', ncol=ncols, labelcolor='linecolor')
+        ax[1].legend(loc='upper right', ncol=ncols, labelcolor='linecolor')
+
+        plt.savefig(self.output_data_dir / 'xsec.pdf', bbox_inches='tight')
+        plt.close()
 
     def convert_to_pRT2(self):
         raise NotImplementedError('Conversion to petitRADTRANS-v2.0 format not implemented.')

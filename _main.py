@@ -24,6 +24,9 @@ if __name__ == '__main__':
     parser.add_argument(
         '--plot', action='store_true', help='Plot the merged outputs.'
         )
+    parser.add_argument(
+        '--overwrite', action='store_true', help='Overwrite the existing output files.'
+        )
 
     parser.add_argument(
         '--convert_to_pRT2', action='store_true', help='Convert to petitRADTRANS v2 format.'
@@ -77,12 +80,18 @@ if __name__ == '__main__':
     if args.calculate:
         data.calculate_tmp_outputs(
             show_progress_bar=args.show_progress_bar, 
-            transition_files_range=args.transition_files_range
+            transition_files_range=args.transition_files_range, 
+            overwrite=args.overwrite,
             )
     if args.save:
-        data.save_merged_outputs()
+        data.save_merged_outputs(
+            overwrite=args.overwrite, 
+            )
     if args.plot:
-        data.plot_merged_outputs(T_to_plot=[100,200,500,1000,2000,3000])
+        data.plot_merged_outputs(
+            T_to_plot=[100,200,500,1000,2000,3000], 
+            P_to_plot=[1e3,1e5,1e7], # 1e-2, 1, 100 bar
+            )
 
     # Optional conversions to petitRADTRANS format
     if args.convert_to_pRT2:

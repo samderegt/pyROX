@@ -60,7 +60,7 @@ class CrossSections:
     def plot_merged_outputs(self, *args, **kwargs):
         raise NotImplementedError("This method should be implemented in the subclass.")
 
-    def save_merged_outputs(self, keys_to_merge=['k','alpha'], **kwargs):
+    def save_merged_outputs(self, keys_to_merge, overwrite=False, **kwargs):
         """
         Merge the temporary files and save the final output. 
         """
@@ -68,7 +68,7 @@ class CrossSections:
 
         # Ask to overwrite the final output file if it already exists
         response = ''
-        if not self.final_output_file.exists():
+        if not self.final_output_file.exists() or overwrite:
             response = 'yes'
 
         while response not in ['yes', 'no', 'y', 'n']:
