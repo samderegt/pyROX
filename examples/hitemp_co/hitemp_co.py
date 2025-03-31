@@ -30,6 +30,7 @@ files = dict(
     partition_function = f'{input_data_dir}/q26.txt', 
 )
 
+# Pressure-broadening information
 perturber_info = dict(
     H2 = dict(
         VMR=0.85, file=f'{input_data_dir}/12C-16O__H2.broad', # read from file

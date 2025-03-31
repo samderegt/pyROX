@@ -38,7 +38,7 @@ def wget_if_not_exist(url, out_dir, out_name=None):
         print(f'  File \"{out_name}\" already exists, skipping download')
         return str(out_name)
     else:
-        print(f'  Downloading from \"{url}\"')
+        print(f'  Downloading \"{url}\"')
     
     # Download and rename
     try:

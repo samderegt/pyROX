@@ -5,6 +5,7 @@ from scipy.special import wofz
 
 import pathlib
 import warnings
+import re
 
 from tqdm import tqdm
 
@@ -19,7 +20,7 @@ class LineProfileHelper:
         # Partition function
         q = self.calculate_partition_function(T)
 
-        # Gordon et al. (2017) (E_low: [m^-1]; nu_0: [s^-1])
+        # Gordon et al. (2017) (E_low: [J]; nu_0: [s^-1])
         S = (
             S_0 * (self.q_0/q) * np.exp(E_low/sc.k*(1/self.T_0-1/T)) *
             (1-np.exp(-sc.h*nu_0/(sc.k*T))) / (1-np.exp(-sc.h*nu_0/(sc.k*self.T_0)))
@@ -84,16 +85,19 @@ class LineProfileHelper:
         for k in range(len(nu_bin_idx)-1):
             # Cumulative sum of lines in bin
             S_range = S[nu_bin_idx[k]:nu_bin_idx[k+1]]
-            S_sort  = np.sort(S_range)
-            S_summed = np.cumsum(S_sort)
+            if len(S_range) < 2:
+                continue # One/no lines in bin
+            idx_sort = np.argsort(S_range)
+            S_sort   = S_range[idx_sort]
+            S_cumsum = np.cumsum(S_sort)
 
             # Lines contributing less than 'factor' to total strength
-            i_search = np.searchsorted(S_summed, factor*S_summed[-1])
+            i_search = np.searchsorted(S_cumsum, factor*S_cumsum[-1])
             S_cutoff = S_sort[i_search]
 
             # Add weak line-strengths to strongest line
-            sum_others = np.sum(S_range[S_range<S_cutoff])
-            S_range[np.argmax(S_range)] += sum_others
+            S_sum_others = S_cumsum[i_search-1]
+            S_range[idx_sort[-1]] += S_sum_others
 
             # Ignore weak lines
             S_range[S_range<S_cutoff] = 0.
@@ -113,8 +117,6 @@ class LineProfileHelper:
             wing_cutoff_distance, 
             N_lines_in_chunk=200, 
             ):
-
-        #print(f'  Number of lines: {len(nu_0)}')
 
         # Indices where lines should be inserted
         idx_to_insert = np.searchsorted(nu_grid, nu_0) - 1
@@ -457,19 +459,20 @@ class LineByLine(CrossSections, LineProfileHelper):
         """
         Compute the cross-sections.
         """
-
-        # Select only the lines within the wavelength range
-        nu_0, S_0, E_low = self.mask_arrays(
-            [nu_0, S_0, E_low], mask=(nu_0>self.nu_min) & (nu_0<self.nu_max)
-            )
-        if len(S_0) == 0:
-            return # No more lines
         
         # Get the line-widths
         gamma_N   = self.gamma_N(nu_0) # Lorentzian components
         gamma_vdW = self.gamma_vdW(P, T)
-        gamma_L   = self.gamma_L(gamma_vdW, gamma_N)
+        gamma_L = self.gamma_L(gamma_vdW, gamma_N)
         gamma_G = self.gamma_G(T, nu_0) # Gaussian component
+
+        # Select only the lines within the wavelength range
+        nu_0, S_0, E_low, gamma_N, gamma_vdW, gamma_L, gamma_G = self.mask_arrays(
+            [nu_0, S_0, E_low, gamma_N, gamma_vdW, gamma_L, gamma_G], 
+            mask=(nu_0>self.nu_min) & (nu_0<self.nu_max)
+            )
+        if len(S_0) == 0:
+            return # No more lines
 
         # Get the line-strengths
         S = self.line_strength(T, S_0, E_low, nu_0)
@@ -482,7 +485,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         )
         if len(S) == 0:
             return # No more lines
-
+        
         # Change to a coarse grid if lines are substantially broadened
         gamma_V = self.gamma_V(gamma_G, gamma_L) # Voigt width
         nu_grid_to_use, delta_nu_to_use = \
@@ -573,6 +576,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         self.merged_datasets = utils.read_from_hdf5(
             self.final_output_file, keys_to_read=['wave', 'P', 'T', 'xsec']
         )
+        #self.merged_datasets['xsec'] *= 1e4 # [m^2] -> [cm^2]
 
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(9,6), nrows=2, sharex=True, sharey=True)
@@ -583,11 +587,12 @@ class LineByLine(CrossSections, LineProfileHelper):
         indices_T = np.unique(indices_T)
         T_to_plot = np.unique(T_to_plot)
 
-        idx_P = np.searchsorted(self.merged_datasets['P'], 1e5) # 1 bar
+        #idx_P = np.searchsorted(self.merged_datasets['P'], 1e5) # 1 bar
+        idx_P = np.searchsorted(self.merged_datasets['P'], 1e4) # 1 bar
 
         for idx_T, T in zip(indices_T, T_to_plot):
             if len(T_to_plot)==1:
-                c = plt.get_cmap(cmaps[0])(0.5)
+                c = plt.get_cmap(cmaps[0])(0.4)
             else:
                 c = plt.get_cmap(cmaps[0])((T-T_to_plot.min())/(T_to_plot.max()-T_to_plot.min()))
 
@@ -603,7 +608,10 @@ class LineByLine(CrossSections, LineProfileHelper):
         idx_T = np.searchsorted(self.merged_datasets['T'], 1000.)
 
         for idx_P, P in zip(indices_P, P_to_plot):
-            c = plt.get_cmap(cmaps[1])(np.log10(P/P_to_plot.min())/np.log10(P_to_plot.max()/P_to_plot.min()))
+            if len(P_to_plot)==1:
+                c = plt.get_cmap(cmaps[1])(0.5)
+            else:
+                c = plt.get_cmap(cmaps[1])(np.log10(P/P_to_plot.min())/np.log10(P_to_plot.max()/P_to_plot.min()))
 
             xsec = self.merged_datasets['xsec'][:,idx_P,idx_T]
             ax[1].plot(self.merged_datasets['wave'], xsec, c=c, lw=1, label=f'P={P/sc.bar:.0e} bar')
@@ -662,6 +670,7 @@ class HITRAN(LineByLine):
         # Read the isotope information
         self.isotope_idx       = getattr(config, 'isotope_idx', 1)
         self.isotope_abundance = getattr(config, 'isotope_abundance', 1.0)
+        print(f'\nIsotope index: {self.isotope_idx}, with abundance {self.isotope_abundance:.2e}')
 
         # Remove any quantum-number dependency
         for perturber, info in self.pressure_broadening_info.items():
@@ -676,9 +685,10 @@ class HITRAN(LineByLine):
         Compute the cross-sections.
         """
         input_file = pathlib.Path(input_file)
+        print(f'  Reading transitions from \"{input_file}\"')
         
         # How to handle bz2-compression
-        compression = input_file.suffix
+        compression = str(input_file.suffix).replace('.','')
         if compression != 'bz2':
             compression = 'infer' # Likely decompressed
 
@@ -691,6 +701,7 @@ class HITRAN(LineByLine):
             compression=compression, 
             )
         for transitions in transitions_in_chunks:
+
             isotope_indices = np.array(transitions.iloc[:,1])
             transitions = np.array(transitions)
 
@@ -710,8 +721,13 @@ class HITRAN(LineByLine):
             S_0 = transitions[:,3].astype(float) * (1e2*sc.c) * 1e-4
             S_0 /= self.isotope_abundance # Remove terrestrial abundance ratio
 
-            #print(f'  Number of lines: {len(nu_0)}')
+            idx = np.argsort(nu_0)
+            nu_0 = nu_0[idx]
+            S_0 = S_0[idx]
+            E_l = E_l[idx]
+            
             # Compute the cross-sections, looping over the PT-grid
+            print(f'  Number of lines: {len(nu_0)}')
             self.loop_over_PT_grid(
                 function=self.calculate_cross_sections,
                 nu_0=nu_0, S_0=S_0, E_low=E_low, 
@@ -721,7 +737,51 @@ class HITRAN(LineByLine):
 class ExoMol(LineByLine):
 
     def download_data(self, config):
-        raise NotImplementedError
+        """
+        Download data from ExoMol.
+        """
+
+        print('\nDownloading data from ExoMol')
+
+        files = []
+        file_def_json = None
+        for url in config.urls:
+            file = utils.wget_if_not_exist(url, config.input_data_dir)
+            files.append(file)
+
+            if url.endswith('.def.json'):
+                # Check if the url is a definition file
+                url_base = url.replace('.def.json','')
+                file_def_json = file
+        
+        # Download partition-function and states files
+        file_partition = utils.wget_if_not_exist(f'{url_base}.pf', config.input_data_dir)
+        file_states = utils.wget_if_not_exist(f'{url_base}.states.bz2', config.input_data_dir)
+
+        # Read definition file
+        import json
+        with open(file_def_json, 'r') as f:
+            file_def_dict = json.load(f)
+
+        # Download transitions files
+        file_transitions = [utils.wget_if_not_exist(f'{url_base}.trans.bz2', config.input_data_dir)]
+        if None in file_transitions:
+            # Split up into multiple files
+            wavenumbers = np.linspace(
+                0, file_def_dict['dataset']['transitions']['max_wavenumber'], 
+                file_def_dict['dataset']['transitions']['number_of_transition_files'], 
+                endpoint=False, dtype=int
+            )
+            file_transitions = []
+            for i in range(len(wavenumbers)-1):
+                nu_min_i, nu_max_i = wavenumbers[i], wavenumbers[i+1]
+                file_transitions_i = utils.wget_if_not_exist(
+                    f'{url_base}__{nu_min_i:05d}-{nu_max_i:05d}.trans.bz2', config.input_data_dir
+                )
+                file_transitions.append(file_transitions_i)
+
+        if None in [*files, file_partition, file_states, *file_transitions]:
+            raise ValueError('Failed to download all urls.')
     
     def __init__(self, config, **kwargs):
 
@@ -731,10 +791,202 @@ class ExoMol(LineByLine):
 
         super().__init__(config, **kwargs) # Initialise the parent LineByLine class
 
-        raise NotImplementedError
+    def _read_from_config(self, config):
+
+        # Read the common parameters
+        super()._read_from_config(config)
+
+        # Copy so that we can modify the broadening parameters per transition
+        self.pressure_broadening_info_copy = self.pressure_broadening_info.copy()
+
+    def _read_broadening_per_transition(self, J_l, J_u):
+
+        for perturber, info in self.pressure_broadening_info_copy.items():
+            # Get the broadening parameters
+            gamma = info['gamma']
+            n     = info['n']
+            #label = info.get('label', None)
+
+            if callable(gamma):
+                # User-provided function
+                self.pressure_broadening_info[perturber]['gamma'] = gamma(J_l)
+            else: 
+                self.pressure_broadening_info[perturber]['gamma'] = \
+                    np.nanmean(gamma)*np.ones_like(J_l)
+
+            if callable(n):
+                # User-provided function
+                self.pressure_broadening_info[perturber]['n'] = n(J_l)
+            else:
+                self.pressure_broadening_info[perturber]['n'] = \
+                    np.nanmean(n)*np.ones_like(J_l)
+
+            if callable(gamma) or callable(n):
+                continue
+
+            J_in_table = info.get('J')
+            label = info.get('label')
+            if (J_in_table is None) or (label not in ['a0', 'm0']):
+                # No quantum-number dependence
+                continue
+            
+            # Read in chunks to avoid memory overload
+            for idx_l in range(0, len(J_l), 100_000):
+                idx_h = min([idx_l+100_000, len(J_l)])
+
+                J_l_to_match = J_l[idx_l:idx_h]
+                
+                if label == 'm0':
+                    # Check if transition is in R-branch (i.e. lower J quantum 
+                    # number is +1 higher than upper state).
+                    # In that case, 4th column in .broad is |m|=J_l+1.
+                    delta_J = J_l[idx_l:idx_h] - J_u[idx_l:idx_h]
+                    J_l_to_match[(delta_J==+1)] += 1
+
+                # Indices in .broad table corresponding to each transition
+                indices_J = np.argwhere(J_in_table[None,:]==J_l_to_match[:,None])
+
+                # Update the gamma and n values
+                self.pressure_broadening_info[perturber]['gamma'][idx_l+indices_J[:,0]] = \
+                    np.array(gamma)[indices_J[:,1]]
+                self.pressure_broadening_info[perturber]['n'][idx_l+indices_J[:,0]] = \
+                    np.array(n)[indices_J[:,1]]
+
+    def _read_states(self):        
+
+        states_file = self.config.files.get('states', None)
+        if states_file is None:
+            raise ValueError('No states file specified in the configuration.')
+        states_file = pathlib.Path(states_file)
+
+        print(f'  Reading states from \"{states_file}\"')
+
+        # How to handle bz2-compression
+        compression = str(states_file.suffix).replace('.','')
+        if compression == 'bz2':
+            import bz2
+            with bz2.open(states_file, 'rb') as f:
+                first_line = f.readline()
+        else:
+            with open(states_file, 'r') as f:
+                first_line = f.readline()
+
+        # Infer column-widths
+        col_widths = [len(col) for col in re.findall('\s+\S+', str(first_line))]
+        
+        # Load states (ID, E, g, J)
+        states = read_fwf(
+            states_file, widths=col_widths[:4], header=None, compression=compression
+            )
+        states = np.array(states)
+
+        # Sort the states by their IDs
+        states = states[np.argsort(states[:,0])]
+
+        self.states_ID = states[:,0].astype(int)
+        self.states_E  = states[:,1].astype(float) * sc.h*(1e2*sc.c) # [cm^-1] -> [J]
+        self.states_g  = states[:,2].astype(int)
+        self.states_J  = states[:,3].astype(float)
+
+        ID_diff = np.diff(self.states_ID)
+        if np.any(ID_diff == 0):
+            raise ValueError(f'Duplicate state IDs found in states file (ID: {self.states_ID[ID_diff==0]}).')
+        if np.any(ID_diff > 1):
+            raise ValueError(f'Some state IDs are skipped in states file (ID: {self.states_ID[ID_diff>1]}).')
 
     def _read_transitions_in_chunks(self, input_file, tmp_output_file, **kwargs):
-        raise NotImplementedError
+
+        self._read_states()
+
+        print(f'  Reading transitions from \"{input_file}\"')
+        i = 0
+        state_ID_u = []
+        state_ID_l = []
+        A = []
+
+        # Read the transitions file in chunks to prevent memory overloads
+        import bz2
+        with bz2.open(input_file) as f:
+
+            while True:
+                line = f.readline()
+
+                is_end_of_file = (not line)
+                is_chunk = (i%self.N_lines_in_chunk == 0)
+
+                if i == 0:
+                    # Replace any tabs with spaces
+                    line = line.replace(b'\t', b' ')
+
+                    # Infer column-widths from first line
+                    col_widths = [len(col) for col in re.findall(b'\s+\S+', line)]
+                    col_indices = np.cumsum(col_widths)
+                
+                elif is_chunk or is_end_of_file:
+
+                    if len(A) == 0:
+                        break
+
+                    # Compute when N_lines_in_chunk is reached
+                    print(f'  Number of lines: {len(A)}')
+
+                    idx_l = np.searchsorted(self.states_ID, np.array(state_ID_l, dtype=int))
+                    idx_u = np.searchsorted(self.states_ID, np.array(state_ID_u, dtype=int))
+                    A = np.array(A, dtype=float)
+
+                    E_u = self.states_E[idx_u] # [J]
+                    E_l = self.states_E[idx_l]
+                    nu_0 = np.abs(E_u - E_l) / sc.h # [J] -> [s^-1]
+
+                    g_u = self.states_g[idx_u] # State degeneracy
+
+                    J_l = self.states_J[idx_l] # Rotational quantum number
+                    J_u = self.states_J[idx_u]
+
+                    # Remove any nu = 0 transitions
+                    A, E_l, nu_0, g_u, J_l, J_u = self.mask_arrays(
+                        [A, E_l, nu_0, g_u, J_l, J_u], mask=(nu_0 > 0)
+                    )
+
+                    # Line-strengths at reference temperature
+                    S_0 = (
+                        A*g_u / (8*np.pi*(nu_0/sc.c)**2) *
+                        np.exp(-E_l/(sc.k*self.T_0)) / self.q_0 * 
+                        (1-np.exp(-sc.h*nu_0/(sc.k*self.T_0)))
+                    ) # [s^-1/(molec. m^-2)]
+
+                    idx = np.argsort(nu_0)
+                    nu_0 = nu_0[idx]
+                    S_0 = S_0[idx]
+                    E_l = E_l[idx]
+                    J_l = J_l[idx]
+                    J_u = J_u[idx]
+                    
+                    # Get J-specific broadening parameters
+                    self._read_broadening_per_transition(J_l, J_u)
+
+                    # Compute the cross-sections, looping over the PT-grid
+                    self.loop_over_PT_grid(
+                        function=self.calculate_cross_sections,
+                        nu_0=nu_0, S_0=S_0, E_low=E_l, **kwargs
+                        )
+
+                    # Reset
+                    state_ID_u = []
+                    state_ID_l = []
+                    A = []
+
+                if is_end_of_file:
+                    break
+
+                # Access info on upper and lower states
+                state_ID_u.append(line[0:col_indices[0]])
+                state_ID_l.append(line[col_indices[0]:col_indices[1]])
+                A.append(
+                    line[col_indices[1]:col_indices[2]] # Einstein A-coefficient [s^-1]
+                    )
+
+                i += 1
 
 class Kurucz(LineByLine):
 
