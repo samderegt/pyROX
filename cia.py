@@ -29,7 +29,12 @@ class CIA(CrossSections):
             raise ValueError('No CIA files specified in the configuration.')
 
         self.T_grid, self.abs_coeff_k, self.abs_coeff_alpha = [], [], []
-        for i, (file, *masks) in enumerate(cia_files):
+        #for i, (file, *masks) in enumerate(cia_files):
+        for i, file in enumerate(cia_files):
+            if isinstance(file, tuple):
+                file, *masks = file
+            else:
+                masks = []
 
             # Compute absorption coefficients
             T_grid, abs_coeff_k, abs_coeff_alpha = self._read_absorption_coefficients(file)
@@ -96,8 +101,10 @@ class CIA(CrossSections):
         T_to_plot = np.unique(T_to_plot)
 
         for idx_T, T in zip(indices_T, T_to_plot):
-
-            c = plt.get_cmap(cmap)((T-T_to_plot.min())/(T_to_plot.max()-T_to_plot.min()))
+            if len(T_to_plot)==1:
+                c = plt.get_cmap(cmap)(0.4)
+            else:
+                c = plt.get_cmap(cmap)((T-T_to_plot.min())/(T_to_plot.max()-T_to_plot.min()))
 
             ax[0].plot(wave, k[:,idx_T], c=c, label=f'{T:.0f} K')
             ax[1].plot(wave, alpha[:,idx_T], c=c)
