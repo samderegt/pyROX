@@ -4,6 +4,8 @@ import warnings
 import wget
 import pathlib
 import h5py
+import time
+import datetime
 
 import scipy.constants as sc
 sc.c2 = 1.438777e-2 # [m K]
@@ -14,7 +16,7 @@ sc.amu = sc.physical_constants['atomic mass constant'][0] # [kg]
 sc.m_H2 = 2.01588*sc.amu  # [kg]
 sc.m_He = 4.002602*sc.amu # [kg]
 
-def wget_if_not_exist(url, out_dir, out_name=None):
+def download(url, out_dir, out_name=None):
     """
     Download a file from a URL if it does not already exist.
 
@@ -112,6 +114,22 @@ def print_welcome_message():
 
     print('\n'+'='*80)
     print('  Welcome to pyROX: Rapid Opacity X-sections for Python')
+    print('='*80+'\n')
+
+    return time.time()
+
+def print_finish_message(time_start):
+    """
+    Print a finish message and the elapsed time.
+
+    Parameters:
+    time_start (float): Start time of the process.
+    """
+
+    time_finish = time.time()
+    time_elapsed = time_finish - time_start
+
+    print('\nTime elapsed: {}'.format(str(datetime.timedelta(seconds=time_elapsed))))
     print('='*80+'\n')
 
 def add_to_config(config, **kwargs):

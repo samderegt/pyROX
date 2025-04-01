@@ -81,6 +81,9 @@ class CIA(CrossSections):
         self.merged_datasets = utils.read_from_hdf5(
             self.final_output_file, keys_to_read=['wave', 'T', 'k', 'alpha']
             )
+        wave = self.merged_datasets['wave'] * 1e6 # [m] -> [um]
+        k = self.merged_datasets['k'] * (1e2)**5 # [m^5 molecule^-2] -> [cm^5 molecule^-2]
+        alpha = self.merged_datasets['alpha'] * (1e2)**(-2) # [m^-1 molecule^-2] -> [cm^-1 molecule^-2]
 
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(9,6), nrows=2, sharex=True)
@@ -96,11 +99,11 @@ class CIA(CrossSections):
 
             c = plt.get_cmap(cmap)((T-T_to_plot.min())/(T_to_plot.max()-T_to_plot.min()))
 
-            ax[0].plot(self.merged_datasets['wave'], self.merged_datasets['k'][:,idx_T], c=c, label=f'{T:.0f} K')
-            ax[1].plot(self.merged_datasets['wave'], self.merged_datasets['alpha'][:,idx_T], c=c)
+            ax[0].plot(wave, k[:,idx_T], c=c, label=f'{T:.0f} K')
+            ax[1].plot(wave, alpha[:,idx_T], c=c)
 
-        ax[0].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, ylabel='k [m^5 molecule^-2]')
-        ax[1].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, xlabel='wave [m]', ylabel='alpha [m^-1 molecule^-2]')
+        ax[0].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, ylabel='k [cm^5 molecule^-2]')
+        ax[1].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, xlabel='wave [um]', ylabel='alpha [cm^-1 molecule^-2]')
 
         handles, _ = ax[0].get_legend_handles_labels()
         ncols = 1 + len(handles)//8
@@ -195,7 +198,7 @@ class CIA_HITRAN(CIA):
 
         files = []
         for url in config.urls:
-            file = utils.wget_if_not_exist(url, config.input_data_dir)
+            file = utils.download(url, config.input_data_dir)
             files.append(file)
 
         if None in files:

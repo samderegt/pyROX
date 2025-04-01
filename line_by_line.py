@@ -25,7 +25,7 @@ class LineProfileHelper:
             S_0 * (self.q_0/q) * np.exp(E_low/sc.k*(1/self.T_0-1/T)) *
             (1-np.exp(-sc.h*nu_0/(sc.k*T))) / (1-np.exp(-sc.h*nu_0/(sc.k*self.T_0)))
         )
-        return S
+        return S # [s^-1/(molecule m^-2)]
 
     def normalise_wing_cutoff(self, S, cutoff_distance, gamma_L):
         # Eq. A6 Lacy & Burrows (2023)
@@ -154,7 +154,7 @@ class LineProfileHelper:
             nu_0_chunk    = nu_0[idx_chunk_l:idx_chunk_h,None]
             gamma_G_chunk = gamma_G[idx_chunk_l:idx_chunk_h,None]
             a_chunk = a[idx_chunk_l:idx_chunk_h,None]
-            S_chunk = S[idx_chunk_l:idx_chunk_h,None]
+            S_chunk = S[idx_chunk_l:idx_chunk_h,None] # [s^-1/(molecule m^-2)]
 
             # Correct for coarse grid | (N_lines,1)
             nu_grid_chunk = nu_grid[idx_to_insert_chunk,None]
@@ -475,7 +475,7 @@ class LineByLine(CrossSections, LineProfileHelper):
             return # No more lines
 
         # Get the line-strengths
-        S = self.line_strength(T, S_0, E_low, nu_0)
+        S = self.line_strength(T, S_0, E_low, nu_0) # [s^-1/(molecule m^-2)]
 
         # Apply local and global line-strength cutoffs
         S = self.apply_local_cutoff(S, nu_0, self.local_cutoff)
@@ -520,13 +520,16 @@ class LineByLine(CrossSections, LineProfileHelper):
         idx_T = np.searchsorted(self.T_grid, T)
         self.sigma[:,idx_P,idx_T] += sigma
 
-    def calculate_tmp_outputs(self, overwrite=False, **kwargs):
+    def calculate_tmp_outputs(self, overwrite=False, files_range=None, **kwargs):
         print('\nCalculating cross-sections')
 
         transitions_files = self.config.files.get('transitions', None)
         if transitions_files is None:
             raise ValueError('No transitions files specified in the configuration.')
         transitions_files = np.atleast_1d(transitions_files)
+
+        if files_range is not None:
+            transitions_files = transitions_files[files_range[0]:files_range[1]]
 
         # Check if the output files already exist
         tmp_output_files = self._check_if_output_exists(
@@ -576,7 +579,9 @@ class LineByLine(CrossSections, LineProfileHelper):
         self.merged_datasets = utils.read_from_hdf5(
             self.final_output_file, keys_to_read=['wave', 'P', 'T', 'xsec']
         )
-        #self.merged_datasets['xsec'] *= 1e4 # [m^2] -> [cm^2]
+        wave = self.merged_datasets['wave'] * 1e6 # [m] -> [um]
+        xsec = self.merged_datasets['xsec'] * (1e2)**2
+        xsec[xsec<=1e-150] = np.nan
 
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(9,6), nrows=2, sharex=True, sharey=True)
@@ -587,8 +592,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         indices_T = np.unique(indices_T)
         T_to_plot = np.unique(T_to_plot)
 
-        #idx_P = np.searchsorted(self.merged_datasets['P'], 1e5) # 1 bar
-        idx_P = np.searchsorted(self.merged_datasets['P'], 1e4) # 1 bar
+        idx_P = np.searchsorted(self.merged_datasets['P'], 1e5) # 1 bar
 
         for idx_T, T in zip(indices_T, T_to_plot):
             if len(T_to_plot)==1:
@@ -596,8 +600,7 @@ class LineByLine(CrossSections, LineProfileHelper):
             else:
                 c = plt.get_cmap(cmaps[0])((T-T_to_plot.min())/(T_to_plot.max()-T_to_plot.min()))
 
-            xsec = self.merged_datasets['xsec'][:,idx_P,idx_T]
-            ax[0].plot(self.merged_datasets['wave'], xsec, c=c, lw=1, label=f'T={T:.0f} K')
+            ax[0].plot(wave, xsec[:,idx_P,idx_T], c=c, lw=0.7, label=f'T={T:.0f} K')
 
         # Plot for certain pressures
         P_to_plot = kwargs.get('P_to_plot', self.merged_datasets['P'])
@@ -613,15 +616,15 @@ class LineByLine(CrossSections, LineProfileHelper):
             else:
                 c = plt.get_cmap(cmaps[1])(np.log10(P/P_to_plot.min())/np.log10(P_to_plot.max()/P_to_plot.min()))
 
-            xsec = self.merged_datasets['xsec'][:,idx_P,idx_T]
-            ax[1].plot(self.merged_datasets['wave'], xsec, c=c, lw=1, label=f'P={P/sc.bar:.0e} bar')
+            ax[1].plot(wave, xsec[:,idx_P,idx_T], c=c, lw=0.7, label=f'P={P/sc.bar:.0e} bar')
 
         if ylim is None:
-            xsec = self.merged_datasets['xsec'][self.merged_datasets['xsec']>1e-250]
-            ylim = (np.nanpercentile(xsec, 3), np.nanmax(xsec)*10)
+           ylim = (np.nanpercentile(xsec, 3), np.nanmax(xsec)*10)
+        if xlim is None:
+            xlim = (wave.min(), wave.max())
 
-        ax[0].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, ylabel='xsec [m^2 molecule^-1]')
-        ax[1].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, xlabel='wavelength [m]', ylabel='xsec [m^2 molecule^-1]')
+        ax[0].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, ylabel='xsec [cm^2 molecule^-1]')
+        ax[1].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, xlabel='wavelength [um]', ylabel='xsec [cm^2 molecule^-1]')
         
         handles, _ = ax[0].get_legend_handles_labels()
         ncols = 1 + len(handles)//8
@@ -648,7 +651,7 @@ class HITRAN(LineByLine):
 
         files = []
         for url in config.urls:
-            file = utils.wget_if_not_exist(url, config.input_data_dir)
+            file = utils.download(url, config.input_data_dir)
             files.append(file)
 
         if None in files:
@@ -746,7 +749,7 @@ class ExoMol(LineByLine):
         files = []
         file_def_json = None
         for url in config.urls:
-            file = utils.wget_if_not_exist(url, config.input_data_dir)
+            file = utils.download(url, config.input_data_dir)
             files.append(file)
 
             if url.endswith('.def.json'):
@@ -755,8 +758,8 @@ class ExoMol(LineByLine):
                 file_def_json = file
         
         # Download partition-function and states files
-        file_partition = utils.wget_if_not_exist(f'{url_base}.pf', config.input_data_dir)
-        file_states = utils.wget_if_not_exist(f'{url_base}.states.bz2', config.input_data_dir)
+        file_partition = utils.download(f'{url_base}.pf', config.input_data_dir)
+        file_states = utils.download(f'{url_base}.states.bz2', config.input_data_dir)
 
         # Read definition file
         import json
@@ -764,7 +767,7 @@ class ExoMol(LineByLine):
             file_def_dict = json.load(f)
 
         # Download transitions files
-        file_transitions = [utils.wget_if_not_exist(f'{url_base}.trans.bz2', config.input_data_dir)]
+        file_transitions = [utils.download(f'{url_base}.trans.bz2', config.input_data_dir)]
         if None in file_transitions:
             # Split up into multiple files
             wavenumbers = np.linspace(
@@ -775,7 +778,7 @@ class ExoMol(LineByLine):
             file_transitions = []
             for i in range(len(wavenumbers)-1):
                 nu_min_i, nu_max_i = wavenumbers[i], wavenumbers[i+1]
-                file_transitions_i = utils.wget_if_not_exist(
+                file_transitions_i = utils.download(
                     f'{url_base}__{nu_min_i:05d}-{nu_max_i:05d}.trans.bz2', config.input_data_dir
                 )
                 file_transitions.append(file_transitions_i)
@@ -805,14 +808,14 @@ class ExoMol(LineByLine):
             # Get the broadening parameters
             gamma = info['gamma']
             n     = info['n']
-            #label = info.get('label', None)
 
             if callable(gamma):
                 # User-provided function
                 self.pressure_broadening_info[perturber]['gamma'] = gamma(J_l)
-            else: 
+            else:
+                # Used as default if no quantum-number match is found
                 self.pressure_broadening_info[perturber]['gamma'] = \
-                    np.nanmean(gamma)*np.ones_like(J_l)
+                    np.nanmean(gamma)*np.ones_like(J_l) # Extend to all lines
 
             if callable(n):
                 # User-provided function
@@ -825,8 +828,8 @@ class ExoMol(LineByLine):
                 continue
 
             J_in_table = info.get('J')
-            label = info.get('label')
-            if (J_in_table is None) or (label not in ['a0', 'm0']):
+            diet = info.get('diet')
+            if (J_in_table is None) or (diet not in ['a0', 'm0']):
                 # No quantum-number dependence
                 continue
             
@@ -836,7 +839,7 @@ class ExoMol(LineByLine):
 
                 J_l_to_match = J_l[idx_l:idx_h]
                 
-                if label == 'm0':
+                if diet == 'm0':
                     # Check if transition is in R-branch (i.e. lower J quantum 
                     # number is +1 higher than upper state).
                     # In that case, 4th column in .broad is |m|=J_l+1.
@@ -900,15 +903,15 @@ class ExoMol(LineByLine):
 
         print(f'  Reading transitions from \"{input_file}\"')
         i = 0
-        state_ID_u = []
-        state_ID_l = []
-        A = []
+        state_ID_u = []; state_ID_l = []; A = []
+        is_end_of_file = False
 
         # Read the transitions file in chunks to prevent memory overloads
         import bz2
         with bz2.open(input_file) as f:
 
-            while True:
+            while not is_end_of_file:
+                # Read the next line
                 line = f.readline()
 
                 is_end_of_file = (not line)
@@ -972,19 +975,15 @@ class ExoMol(LineByLine):
                         )
 
                     # Reset
-                    state_ID_u = []
-                    state_ID_l = []
-                    A = []
+                    state_ID_u = []; state_ID_l = []; A = []
 
-                if is_end_of_file:
-                    break
-
-                # Access info on upper and lower states
-                state_ID_u.append(line[0:col_indices[0]])
-                state_ID_l.append(line[col_indices[0]:col_indices[1]])
-                A.append(
-                    line[col_indices[1]:col_indices[2]] # Einstein A-coefficient [s^-1]
-                    )
+                if not is_end_of_file:
+                    # Access info on upper and lower states
+                    state_ID_u.append(line[0:col_indices[0]])
+                    state_ID_l.append(line[col_indices[0]:col_indices[1]])
+                    A.append(
+                        line[col_indices[1]:col_indices[2]] # Einstein A-coefficient [s^-1]
+                        )
 
                 i += 1
 
