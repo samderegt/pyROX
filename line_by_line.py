@@ -31,6 +31,14 @@ class LineProfileHelper:
         # Eq. A6 Lacy & Burrows (2023)
         return S / ((2/np.pi)*np.arctan(cutoff_distance/gamma_L))
 
+    def pressure_shift(self, P, T, nu_0, delta=None):
+        
+        if delta is None:
+            return nu_0 # No pressure shift
+
+        # Calculate the pressure shift
+        return nu_0 + delta*(P/sc.atm) # [s^-1]
+
     def gamma_vdW(self, P, T, **kwargs):
 
         # Van der Waals broadening
@@ -199,6 +207,10 @@ class LineByLine(CrossSections, LineProfileHelper):
         # Reference temperature and partition function
         self.T_0 = getattr(self.config, 'T_0', 296.)
         self.q_0 = self.calculate_partition_function(self.T_0)
+
+        # Transition energies to ignore
+        self.nu_0_to_ignore = np.atleast_1d(getattr(config, 'nu_0_to_ignore', []))
+        self.nu_0_to_ignore *= 1e2*sc.c # [cm^-1] -> [s^-1]
 
         # Read the cutoff parameters
         wing_cutoff = getattr(self.config, 'wing_cutoff', None) # [cm^-1]
@@ -449,16 +461,24 @@ class LineByLine(CrossSections, LineProfileHelper):
                     function(P, T, **kwargs)
                     pbar.update(1)
     
-    def calculate_cross_sections(self, P, T, nu_0, S_0, E_low, A, delta_P=0., **kwargs):
+    def calculate_cross_sections(self, P, T, nu_0, S_0, E_low, A, delta=None, **kwargs):
         """
         Compute the cross-sections.
         """
 
         # Get the line-widths
         gamma_N   = self.gamma_N(A) # Lorentzian components
-        gamma_vdW = self.gamma_vdW(P, T, E_low, nu_0)
-        gamma_L = self.gamma_L(gamma_vdW, gamma_N)
-        gamma_G = self.gamma_G(T, nu_0) # Gaussian component
+        gamma_vdW = self.gamma_vdW(P, T, E_low=E_low, nu_0=nu_0)
+        gamma_L   = self.gamma_L(gamma_vdW, gamma_N)
+        gamma_G   = self.gamma_G(T, nu_0) # Gaussian component
+
+        for nu_0_i in self.nu_0_to_ignore:
+            # Ignore lines with a wavenumber close to the one to ignore
+            mask = np.isclose(nu_0, nu_0_i, atol=1e-8)
+            nu_0[mask] = np.nan
+
+        # Apply the pressure shift
+        nu_0 = self.pressure_shift(P, T, nu_0, delta=delta)
 
         # Select only the lines within the wavelength range
         nu_0, S_0, E_low, gamma_N, gamma_vdW, gamma_L, gamma_G = self.mask_arrays(
@@ -484,9 +504,6 @@ class LineByLine(CrossSections, LineProfileHelper):
         gamma_V = self.gamma_V(gamma_G, gamma_L) # Voigt width
         nu_grid_to_use, delta_nu_to_use = \
             self._configure_coarse_nu_grid(adaptive_delta_nu=np.mean(gamma_V)/6)
-
-        # Indices where lines should be inserted
-        idx_to_insert = np.searchsorted(nu_grid_to_use, nu_0) - 1
         
         # Wing cutoff from given lambda-function
         wing_cutoff_distance = self.wing_cutoff(np.mean(gamma_V), P) # [s^-1]
@@ -1046,9 +1063,40 @@ class Kurucz(LineByLine):
             self.E_ion *= (1e2*sc.c) * sc.h # [cm^-1] -> [J]
         self.Z = getattr(config, 'Z', 1.0) # Charge of absorber
 
-        # Transition energies to ignore
-        self.nu_0_to_ignore = np.atleast_1d(getattr(config, 'nu_0_to_ignore', []))
-        self.nu_0_to_ignore *= 1e2*sc.c # [cm^-1] -> [s^-1]
+        # Impact width and shift (Allard et al. 2023)
+        self.impact_width_info = self._read_impact_info(
+            impact_info=getattr(config, 'impact_width_info', {})
+            )
+        self.impact_shift_info = self._read_impact_info(
+            impact_info=getattr(config, 'impact_shift_info', {})
+            )        
+
+    def _read_impact_info(self, impact_info={}):
+
+        if len(impact_info) == 0:
+            # No impact width info provided
+            return impact_info
+
+        for perturber, info in impact_info.items():
+
+            # Convert to SI units
+            nu_0 = np.atleast_1d(info.get('nu_0', np.nan))
+            impact_info[perturber]['nu_0'] = nu_0 * (1e2*sc.c) # [cm^-1] -> [s^-1]
+
+            A = np.atleast_1d(info.get('A', np.nan))
+            impact_info[perturber]['A'] = A * (1e2*sc.c) # [cm^-1](-ish) -> [s^-1]
+
+            impact_info[perturber]['b'] = np.atleast_1d(info.get('b', np.nan))
+            
+            number_density_reference = info.get('number_density_reference', 1e20)
+            number_density_reference *= (1e-2)**3 # [cm^-3] -> [m^-3]
+            impact_info[perturber]['number_density_reference'] = number_density_reference
+
+            # Read from pressure-broadening info alternatively
+            VMR = info.get('VMR', self.pressure_broadening_info[perturber]['VMR'])
+            impact_info[perturber]['VMR'] = VMR
+
+        return impact_info
 
     def _read_partition_function(self, T_grid=np.arange(1,5001+1e-6,1)):
         """
@@ -1130,19 +1178,18 @@ class Kurucz(LineByLine):
     def _read_VALD_transitions(self, input_file):
         raise NotImplementedError('VALD transitions not implemented yet.')
 
-    def gamma_vdW(self, P, T, E_low=None, nu_0=None):
-
-        reduced_mass_H = (sc.m_H*self.mass) / (sc.m_H + self.mass) # [kg]
+    def gamma_vdW(self, P, T, E_low, nu_0):
 
         # Get number density from equation-of-state or ideal-gas
         number_density = self.calculate_number_density(P, T) # [m^-3]
+
+        reduced_mass_H = (sc.m_H*self.mass) / (sc.m_H + self.mass) # [kg]
 
         idx = np.isfinite(self.gamma_vdW_in_table)
         gamma_vdW = np.zeros_like(self.gamma_vdW_in_table)
         for perturber, info in self.pressure_broadening_info.items():
             # Get the broadening parameters
-            VMR = info['VMR']
-            number_density_perturber = number_density * VMR # Perturber density [m^-3]
+            number_density_perturber = number_density * info['VMR'] # Perturber density [m^-3]
 
             mass = info['mass'] # [kg]
             reduced_mass = mass*self.mass / (mass + self.mass)
@@ -1173,6 +1220,9 @@ class Kurucz(LineByLine):
                 (T/10e3)**(0.3) * number_density_perturber
             ) # [s^-1]
 
+        # Impact width (Allard et al. 2023)
+        gamma_vdW = self.apply_impact_Allard_ea_2023(P, T, nu_0, gamma=gamma_vdW)
+
         return gamma_vdW
 
     def gamma_N(self, A):
@@ -1184,6 +1234,61 @@ class Kurucz(LineByLine):
         idx = np.isfinite(self.gamma_N_in_table)
         gamma_N[idx] = self.gamma_N_in_table[idx]
         return gamma_N
+
+    def pressure_shift(self, P, T, nu_0, delta=None):
+
+        # Use the default pressure-shift from the parent class
+        nu_0 = super().pressure_shift(P, T, nu_0, delta=delta)
+        
+        # Apply impact shift (Allard et al. 2023)
+        nu_0 = self.apply_impact_Allard_ea_2023(P, T, nu_0)
+        return nu_0
+
+    def apply_impact_Allard_ea_2023(self, P, T, nu_0, gamma=None):
+        """
+        Impact width/shift (Allard et al. 2023)
+        """
+        # Copy the nu_0 so that we can add a shift
+        nu_0_static = nu_0.copy()
+
+        # Get number density from equation-of-state or ideal-gas
+        number_density = self.calculate_number_density(P, T) # [m^-3]
+
+        impact_info = self.impact_width_info # Impact width
+        if gamma is None:
+            impact_info = self.impact_shift_info # Shift
+
+        for perturber, info in impact_info.items():
+
+            # Get the width/shift parameters
+            number_density_perturber = number_density * info['VMR'] # [m^-3]
+            number_density_reference = info['number_density_reference']
+            A = info['A'] # [s^-1](-ish)
+            b = info['b']
+
+            for nu_0_i in info['nu_0']:
+                # Check where to replace
+                idx = np.isclose(nu_0_static, nu_0_i, atol=1e-8)
+                if np.sum(idx) != 1:
+                    # No match found, or multiple matches
+                    continue
+
+                if gamma is not None:
+                    # Width
+                    gamma[idx] = (
+                        A * T**b * number_density_perturber / number_density_reference
+                    ) # [s^-1]
+                    continue
+                
+                # Shift
+                nu_0[idx] += (
+                    A * T**b * number_density_perturber / number_density_reference
+                ) # [s^-1]
+
+        if gamma is not None:
+            return gamma
+    
+        return nu_0
 
     def _read_transitions(self, input_file, **kwargs):
 
