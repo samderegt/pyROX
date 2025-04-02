@@ -333,6 +333,9 @@ class CrossSections:
         print(f'  Delta nu:   {self.delta_nu/(1e2*sc.c):.3f} cm^-1')
         print(f'  Number of grid points: {self.N_nu}')
 
+        adaptive_nu_grid = getattr(self, 'adaptive_nu_grid', False)
+        print(f'  Adaptive grid: {adaptive_nu_grid}')
+
     def _configure_coarse_nu_grid(self, adaptive_delta_nu):
         
         # Use the original grid

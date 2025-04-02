@@ -10,11 +10,14 @@ import datetime
 import scipy.constants as sc
 sc.c2 = 1.438777e-2 # [m K]
 sc.L0 = sc.physical_constants['Loschmidt constant (273.15 K, 101.325 kPa)'][0] # [m^-3]
-sc.e_cgs = sc.elementary_charge / 3.33564e-10 # [statC] = [cm^3/2 g^1/2 s^-1]
 sc.amu = sc.physical_constants['atomic mass constant'][0] # [kg]
 
+sc.E_H = sc.physical_constants['Rydberg constant times hc in J'][0] # [J]
+
+sc.m_H = 1.00784*sc.amu # [kg]
 sc.m_H2 = 2.01588*sc.amu  # [kg]
 sc.m_He = 4.002602*sc.amu # [kg]
+sc.alpha_H = 0.666793e-30 # Polarisability [m^3]
 
 def download(url, out_dir, out_name=None):
     """
@@ -34,7 +37,8 @@ def download(url, out_dir, out_name=None):
     out_dir.mkdir(parents=True, exist_ok=True)
     
     if out_name is None:
-        out_name = pathlib.Path(out_dir) / url.split('/')[-1]
+        out_name = url.split('/')[-1]
+    out_name = pathlib.Path(out_dir) / out_name
 
     if pathlib.Path(out_name).is_file():
         print(f'  File \"{out_name}\" already exists, skipping download')
@@ -46,8 +50,23 @@ def download(url, out_dir, out_name=None):
     try:
         tmp_file = wget.download(url, out=str(out_dir))
     except Exception as e:
-        warnings.warn(f'Failed to download from \"{url}\": {e}')
-        return
+        warnings.warn(f'Failed to download \"{url}\": {e}')
+
+        try:
+            # If wget fails, try using requests
+            import requests
+            tmp_file = str(out_dir / 'tmp.out')
+
+            response = requests.get(url)
+            if response.status_code == 200:
+                with open(tmp_file, 'wb') as f:
+                    f.write(response.content)
+            else:
+                raise Exception(f'{response.status_code} - {response.reason}')
+
+        except Exception as e:
+            warnings.warn(f'Failed to download \"{url}\": {e}')
+            return
     print()
     tmp_file = pathlib.Path(tmp_file)
 

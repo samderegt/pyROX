@@ -31,13 +31,10 @@ class LineProfileHelper:
         # Eq. A6 Lacy & Burrows (2023)
         return S / ((2/np.pi)*np.arctan(cutoff_distance/gamma_L))
 
-    def gamma_vdW(self, P, T):
-
-        # TODO: Implement the atomic broadening
-        # ...
+    def gamma_vdW(self, P, T, **kwargs):
 
         # Van der Waals broadening
-        gamma_vdW = 0
+        gamma_vdW = 0.
         for perturber, info in self.pressure_broadening_info.items():
             # Get the broadening parameters
             VMR = info['VMR']
@@ -49,17 +46,8 @@ class LineProfileHelper:
 
         return gamma_vdW
 
-    def gamma_N(self, nu_0, log_gamma_N=None):
-
-        # Natural broadening
-        gamma_N = 0.222 * (nu_0/(1e2*sc.c))**2 / (4*np.pi*sc.c) # [s^-1]
-
-        if log_gamma_N is not None:
-            # Natural damping constant is given (for atoms)
-            mask_valid = (log_gamma_N != 0)
-            gamma_N[mask_valid] = 10**log_gamma_N[mask_valid] / (4*np.pi) # [s^-1]
-
-        return gamma_N
+    def gamma_N(self, A):
+        return A / (4*np.pi) # [s^-1]
 
     def gamma_G(self, T, nu_0):
         # Doppler broadening
@@ -75,6 +63,9 @@ class LineProfileHelper:
 
     def apply_local_cutoff(self, S, nu_0, factor):
 
+        if factor == 0.:
+            return S
+
         # Round to zero-th decimal
         nu_bin = np.around((nu_0-self.nu_min)/self.delta_nu_local_cutoff).astype(int)
 
@@ -83,10 +74,12 @@ class LineProfileHelper:
         nu_bin_idx    = np.append(nu_bin_idx, len(nu_bin))
 
         for k in range(len(nu_bin_idx)-1):
-            # Cumulative sum of lines in bin
+            # All lines in this bin
             S_range = S[nu_bin_idx[k]:nu_bin_idx[k+1]]
             if len(S_range) < 2:
                 continue # One/no lines in bin
+
+            # Sort by line-strength
             idx_sort = np.argsort(S_range)
             S_sort   = S_range[idx_sort]
             S_cumsum = np.cumsum(S_sort)
@@ -224,7 +217,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         self.global_cutoff = getattr(self.config, 'global_cutoff', 0.) # [cm^1 molecule^-1]
         self.global_cutoff *= 1e-2 # [m^1 molecule^-1]
 
-        self.local_cutoff = getattr(self.config, 'local_cutoff', None)  # [fraction of cumulative]
+        self.local_cutoff = getattr(self.config, 'local_cutoff', 0.)  # [fraction of cumulative]
         # Finer resolution to determine which lines to keep
         self.delta_nu_local_cutoff = getattr(self.config, 'delta_nu_local_cutoff', 1e-3) # [cm^-1]
         self.delta_nu_local_cutoff *= 1e2*sc.c # [cm^-1] -> [s^-1]
@@ -249,7 +242,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         EOS_table = getattr(self.config, 'EOS_table', None)
         if EOS_table is None:
             # Assume ideal gas
-            self.get_number_density = lambda P, T: P/(sc.k*T)
+            self.calculate_number_density = lambda P, T: P/(sc.k*T)
             return
 
         # Load equation-of-state table and convert into SI
@@ -272,7 +265,7 @@ class LineByLine(CrossSections, LineProfileHelper):
             )
 
         # Define the number density function
-        self.get_number_density = lambda P, T: interp_func([P, T])
+        self.calculate_number_density = lambda P, T: interp_func([P, T])
 
     def _read_mass(self):
         """
@@ -281,9 +274,10 @@ class LineByLine(CrossSections, LineProfileHelper):
         self.mass = getattr(self.config, 'mass', None)
         if (self.mass is None) and (self.database in ['hitran', 'exomol']):
             raise ValueError('Mass of the species must be provided in the configuration file.')
+
         elif (self.mass is None) and (self.database in ['vald', 'kurucz']):
             # Atomic species, read from table
-            self.mass = self.atoms_info.loc[self.species, 'mass']
+            self.mass = self.atoms_info.loc[self.species.capitalize(), 'mass']
         self.mass *= sc.amu # [kg]
 
     def _read_pressure_broadening_info(self):
@@ -455,14 +449,14 @@ class LineByLine(CrossSections, LineProfileHelper):
                     function(P, T, **kwargs)
                     pbar.update(1)
     
-    def calculate_cross_sections(self, P, T, nu_0, S_0, E_low, delta_P=0., **kwargs):
+    def calculate_cross_sections(self, P, T, nu_0, S_0, E_low, A, delta_P=0., **kwargs):
         """
         Compute the cross-sections.
         """
-        
+
         # Get the line-widths
-        gamma_N   = self.gamma_N(nu_0) # Lorentzian components
-        gamma_vdW = self.gamma_vdW(P, T)
+        gamma_N   = self.gamma_N(A) # Lorentzian components
+        gamma_vdW = self.gamma_vdW(P, T, E_low, nu_0)
         gamma_L = self.gamma_L(gamma_vdW, gamma_N)
         gamma_G = self.gamma_G(T, nu_0) # Gaussian component
 
@@ -478,7 +472,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         S = self.line_strength(T, S_0, E_low, nu_0) # [s^-1/(molecule m^-2)]
 
         # Apply local and global line-strength cutoffs
-        S = self.apply_local_cutoff(S, nu_0, self.local_cutoff)
+        S = self.apply_local_cutoff(S, nu_0, factor=self.local_cutoff)
         S_min = max([0., self.global_cutoff])
         nu_0, S, gamma_L, gamma_G = self.mask_arrays(
             [nu_0, S, gamma_L, gamma_G], mask=(S>S_min)
@@ -542,7 +536,7 @@ class LineByLine(CrossSections, LineProfileHelper):
             self.sigma = np.zeros(
                 (len(self.nu_grid), len(self.P_grid), len(self.T_grid)), dtype=float
                 )
-            self._read_transitions_in_chunks(input_file, tmp_output_file, **kwargs)
+            self._read_transitions(input_file, **kwargs)
 
             if np.all(self.sigma == 0.):
                 continue # No lines in this file, no need to save
@@ -581,7 +575,6 @@ class LineByLine(CrossSections, LineProfileHelper):
         )
         wave = self.merged_datasets['wave'] * 1e6 # [m] -> [um]
         xsec = self.merged_datasets['xsec'] * (1e2)**2
-        xsec[xsec<=1e-150] = np.nan
 
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(9,6), nrows=2, sharex=True, sharey=True)
@@ -619,7 +612,8 @@ class LineByLine(CrossSections, LineProfileHelper):
             ax[1].plot(wave, xsec[:,idx_P,idx_T], c=c, lw=0.7, label=f'P={P/sc.bar:.0e} bar')
 
         if ylim is None:
-           ylim = (np.nanpercentile(xsec, 3), np.nanmax(xsec)*10)
+            xsec[xsec<=1e-150] = np.nan
+            ylim = (np.nanpercentile(xsec, 3), np.nanmax(xsec)*10)
         if xlim is None:
             xlim = (wave.min(), wave.max())
 
@@ -683,7 +677,7 @@ class HITRAN(LineByLine):
             self.pressure_broadening_info[perturber].pop('diet', None)
             self.pressure_broadening_info[perturber].pop('J', None)
 
-    def _read_transitions_in_chunks(self, input_file, tmp_output_file, **kwargs):
+    def _read_transitions(self, input_file, **kwargs):
         """
         Compute the cross-sections.
         """
@@ -712,29 +706,28 @@ class HITRAN(LineByLine):
                 # Select the isotope index
                 transitions = transitions[np.isin(isotope_indices.astype(str), list('0123456789'))]
                 transitions = transitions[transitions[:,1].astype(int)==self.isotope_idx]
-            
-            # Sort lines by wavenumber
-            transitions = transitions[np.argsort(transitions[:,2])]
 
             # Unit conversion
             nu_0  = transitions[:,2].astype(float) * 1e2*sc.c        # [cm^-1] -> [s^-1]
             E_low = transitions[:,7].astype(float) * sc.h*(1e2*sc.c) # [cm^-1] -> [J]
+            A = transitions[:,4].astype(float) # [s^-1]
 
             # [cm^-1/(molec. cm^-2)] -> [s^-1/(molec. m^-2)]
             S_0 = transitions[:,3].astype(float) * (1e2*sc.c) * 1e-4
             S_0 /= self.isotope_abundance # Remove terrestrial abundance ratio
 
-            idx = np.argsort(nu_0)
-            nu_0 = nu_0[idx]
-            S_0 = S_0[idx]
-            E_l = E_l[idx]
-            
+            # Sort by wavenumber
+            idx_sort = np.argsort(nu_0)
+            nu_0  = nu_0[idx_sort]
+            S_0   = S_0[idx_sort]
+            E_low = E_low[idx_sort]
+            A     = A[idx_sort]
+
             # Compute the cross-sections, looping over the PT-grid
             print(f'  Number of lines: {len(nu_0)}')
             self.loop_over_PT_grid(
                 function=self.calculate_cross_sections,
-                nu_0=nu_0, S_0=S_0, E_low=E_low, 
-                **kwargs
+                nu_0=nu_0, S_0=S_0, E_low=E_low, A=A, **kwargs
             )
 
 class ExoMol(LineByLine):
@@ -802,7 +795,7 @@ class ExoMol(LineByLine):
         # Copy so that we can modify the broadening parameters per transition
         self.pressure_broadening_info_copy = self.pressure_broadening_info.copy()
 
-    def _read_broadening_per_transition(self, J_l, J_u):
+    def _read_broadening_per_transition(self, J_l, J_u, chunk_size=100_000):
 
         for perturber, info in self.pressure_broadening_info_copy.items():
             # Get the broadening parameters
@@ -834,8 +827,8 @@ class ExoMol(LineByLine):
                 continue
             
             # Read in chunks to avoid memory overload
-            for idx_l in range(0, len(J_l), 100_000):
-                idx_h = min([idx_l+100_000, len(J_l)])
+            for idx_l in range(0, len(J_l), chunk_size):
+                idx_h = min([idx_l+chunk_size, len(J_l)])
 
                 J_l_to_match = J_l[idx_l:idx_h]
                 
@@ -897,13 +890,13 @@ class ExoMol(LineByLine):
         if np.any(ID_diff > 1):
             raise ValueError(f'Some state IDs are skipped in states file (ID: {self.states_ID[ID_diff>1]}).')
 
-    def _read_transitions_in_chunks(self, input_file, tmp_output_file, **kwargs):
+    def _read_transitions(self, input_file, **kwargs):
 
         self._read_states()
 
         print(f'  Reading transitions from \"{input_file}\"')
         i = 0
-        state_ID_u = []; state_ID_l = []; A = []
+        state_ID_up = []; state_ID_low = []; A = []
         is_end_of_file = False
 
         # Read the transitions file in chunks to prevent memory overloads
@@ -933,35 +926,36 @@ class ExoMol(LineByLine):
                     # Compute when N_lines_in_chunk is reached
                     print(f'  Number of lines: {len(A)}')
 
-                    idx_l = np.searchsorted(self.states_ID, np.array(state_ID_l, dtype=int))
-                    idx_u = np.searchsorted(self.states_ID, np.array(state_ID_u, dtype=int))
+                    idx_l = np.searchsorted(self.states_ID, np.array(state_ID_low, dtype=int))
+                    idx_u = np.searchsorted(self.states_ID, np.array(state_ID_up, dtype=int))
                     A = np.array(A, dtype=float)
 
-                    E_u = self.states_E[idx_u] # [J]
-                    E_l = self.states_E[idx_l]
-                    nu_0 = np.abs(E_u - E_l) / sc.h # [J] -> [s^-1]
+                    E_up  = self.states_E[idx_u] # [J]
+                    E_low = self.states_E[idx_l]
+                    nu_0  = np.abs(E_up - E_low) / sc.h # [J] -> [s^-1]
 
-                    g_u = self.states_g[idx_u] # State degeneracy
+                    g_up = self.states_g[idx_u] # State degeneracy
 
                     J_l = self.states_J[idx_l] # Rotational quantum number
                     J_u = self.states_J[idx_u]
 
                     # Remove any nu = 0 transitions
-                    A, E_l, nu_0, g_u, J_l, J_u = self.mask_arrays(
-                        [A, E_l, nu_0, g_u, J_l, J_u], mask=(nu_0 > 0)
+                    A, E_low, nu_0, g_up, J_l, J_u = self.mask_arrays(
+                        [A, E_low, nu_0, g_up, J_l, J_u], mask=(nu_0 > 0)
                     )
 
                     # Line-strengths at reference temperature
                     S_0 = (
-                        A*g_u / (8*np.pi*(nu_0/sc.c)**2) *
-                        np.exp(-E_l/(sc.k*self.T_0)) / self.q_0 * 
+                        A*g_up / (8*np.pi*(nu_0/sc.c)**2) *
+                        np.exp(-E_low/(sc.k*self.T_0)) / self.q_0 * 
                         (1-np.exp(-sc.h*nu_0/(sc.k*self.T_0)))
                     ) # [s^-1/(molec. m^-2)]
 
+                    # Sort by wavenumber
                     idx = np.argsort(nu_0)
                     nu_0 = nu_0[idx]
                     S_0 = S_0[idx]
-                    E_l = E_l[idx]
+                    E_low = E_low[idx]
                     J_l = J_l[idx]
                     J_u = J_u[idx]
                     
@@ -971,16 +965,16 @@ class ExoMol(LineByLine):
                     # Compute the cross-sections, looping over the PT-grid
                     self.loop_over_PT_grid(
                         function=self.calculate_cross_sections,
-                        nu_0=nu_0, S_0=S_0, E_low=E_l, **kwargs
-                        )
+                        nu_0=nu_0, S_0=S_0, E_low=E_low, A=A, **kwargs
+                    )
 
                     # Reset
-                    state_ID_u = []; state_ID_l = []; A = []
+                    state_ID_up = []; state_ID_low = []; A = []
 
                 if not is_end_of_file:
                     # Access info on upper and lower states
-                    state_ID_u.append(line[0:col_indices[0]])
-                    state_ID_l.append(line[col_indices[0]:col_indices[1]])
+                    state_ID_up.append(line[0:col_indices[0]])
+                    state_ID_low.append(line[col_indices[0]:col_indices[1]])
                     A.append(
                         line[col_indices[1]:col_indices[2]] # Einstein A-coefficient [s^-1]
                         )
@@ -994,16 +988,41 @@ class Kurucz(LineByLine):
 
     def download_data(self, config):
         
-        # TODO: Download states from NIST
-        # ...
+        # Download states from NIST (used for partition function)
+        element = config.species
+        element = element.capitalize()
+        if element not in self.atoms_info.index:
+            raise ValueError(f'Element {element} not found in atoms_info.csv.')
+        
+        url = (
+            'https://physics.nist.gov/cgi-bin/ASD/energy1.pl?de=0&'+
+            f'spectrum={element}+I&units=0&format=3&output=0&page_size=15&'+
+            'multiplet_ordered=0&level_out=on&g_out=on&temp=&submit=Retrieve+Data'
+        )
+        files = getattr(config, 'files', {})
+        file_states = files.get('states', 'NIST_states.tsv')
+        file_states = pathlib.Path(file_states).name
+        file_states = utils.download(
+            url, out_dir=config.input_data_dir, out_name=file_states
+            )
 
         if self.database == 'vald':
             raise NotImplementedError('Please download VALD transition-data manually.')
 
-        # TODO: Download Kurucz data
-        # ...
+        # Download Kurucz data
+        atomic_number = self.atoms_info.loc[element, 'number']
+        ionisation_state = getattr(config, 'ionisation_state', 0)
+        atom_id = f'{atomic_number:02d}{ionisation_state:02d}'
 
-        raise NotImplementedError
+        for extension in ['all','pos']:
+            # Try different extensions
+            url = f'http://kurucz.harvard.edu/atoms/{atom_id}/gf{atom_id}.{extension}'
+            file_transitions = utils.download(url, out_dir=config.input_data_dir)
+            if file_transitions is not None:
+                break
+        
+        if None in [file_states, file_transitions]:
+            raise ValueError('Failed to download all urls.')
     
     def __init__(self, config, **kwargs):
 
@@ -1012,19 +1031,20 @@ class Kurucz(LineByLine):
         print('-'*60+'\n')
 
         super().__init__(config, **kwargs) # Initialise the parent LineByLine class
-
-        raise NotImplementedError
     
     def _read_from_config(self, config):
         
         # Read the common parameters
         super()._read_from_config(config)
+
+        element = config.species.capitalize()
+        self.is_alkali = element in ['Li', 'Na', 'K', 'Rb', 'Cs', 'Fr']
         
         # If alkali, read the E_ion and Z for different vdW-broadening
         self.E_ion = getattr(config, 'E_ion', None) # [cm^-1]
         if self.E_ion is not None:
-            self.E_ion *= 1e2 # [cm^-1] -> [m^-1]
-        self.Z = getattr(config, 'Z', None)
+            self.E_ion *= (1e2*sc.c) * sc.h # [cm^-1] -> [J]
+        self.Z = getattr(config, 'Z', 1.0) # Charge of absorber
 
         # Transition energies to ignore
         self.nu_0_to_ignore = np.atleast_1d(getattr(config, 'nu_0_to_ignore', []))
@@ -1034,19 +1054,20 @@ class Kurucz(LineByLine):
         """
         Read the partition function from the configuration file.
         """
-        raise NotImplementedError('Partition function not implemented for Kurucz data.')
 
-        file = self.config.files.get('partition_function', None)
+        file = self.config.files.get('states', None)
         if file is None:
-            raise ValueError('Partition function file must be provided in the configuration file.')
+            raise ValueError('States file must be provided in the configuration file.')
         # Load the states from NIST
-        partition_function = read_csv(file, sep='\t', engine='python', header=0)
+        states = read_csv(file, sep='\t', engine='python', header=0, index_col=False)
 
-        g = np.array(partition_function['g'])
-        E = np.array(partition_function['Level (cm-1)'])
+        g = np.array(states['g'])
+        E = np.array(states['Level (cm-1)'])
 
         # (Higher) Ions beyond this index
         idx_u = np.min(np.argwhere(np.isnan(g)))
+        self.E_ion = E[idx_u] * sc.h*(1e2*sc.c) # [cm^-1] -> [J]
+
         g = g[:idx_u]
         E = E[:idx_u]
 
@@ -1059,5 +1080,142 @@ class Kurucz(LineByLine):
             )
         self.calculate_partition_function = interpolation_function
 
-    def _read_transitions_in_chunks(self, input_file, tmp_output_file, **kwargs):
-        raise NotImplementedError
+    def _read_Kurucz_transitions(self, input_file):
+
+        # Load all transitions at once
+        transitions = read_fwf(
+            input_file, widths=(11,7,6,12,5,1,10,12,5,1,10,6,6,6), header=None, 
+            )
+        transitions = np.array(transitions)
+
+        # Oscillator strength
+        gf = 10**transitions[:,1].astype(float)
+
+        # Calculate the statistical weights as 2J+1
+        g_1 = 2*transitions[:,4].astype(float) + 1
+        g_2 = 2*transitions[:,8].astype(float) + 1
+
+        # Transition energies
+        E_1 = np.abs(transitions[:,3].astype(float)) * 1e2*sc.c # [cm^-1] -> [s^-1]
+        E_2 = np.abs(transitions[:,7].astype(float)) * 1e2*sc.c
+        nu_0 = np.abs(E_1 - E_2) # [s^-1]
+
+        E_low = np.minimum(E_1, E_2) # Ensure lower state has lower energy
+        E_low *= sc.h # [s^-1] -> [J]
+
+        # Choose statistical weights
+        g_up = np.array([
+            g_1[i] if E_low[i]!=E_1[i] else g_2[i] for i in range(len(E_low))
+        ])
+        g_low = np.array([
+            g_1[i] if E_low[i]==E_1[i] else g_2[i] for i in range(len(E_low))
+        ])
+
+        # Einstein A-coefficient [s^-1]
+        A = 2*np.pi*sc.e**2 / (sc.epsilon_0*sc.m_e*sc.c**3) * nu_0**2 * gf / g_up
+
+        # Damping constants given
+        gamma_vdW     = np.nan*np.ones_like(nu_0)
+        log_gamma_vdW = transitions[:,13].astype(float)
+        idx = (log_gamma_vdW != 0.)
+        gamma_vdW[idx] = 10**log_gamma_vdW[idx]/(4*np.pi) * (1e-2)**3 # [s^-1 m^3]
+
+        gamma_N     = np.nan*np.ones_like(nu_0)
+        log_gamma_N = transitions[:,11].astype(float)
+        idx = (log_gamma_N != 0.)
+        gamma_N[idx] = 10**log_gamma_N[idx]/(4*np.pi) # [s^-1]
+        
+        return nu_0, E_low, A, g_up, gamma_vdW, gamma_N
+
+    def _read_VALD_transitions(self, input_file):
+        raise NotImplementedError('VALD transitions not implemented yet.')
+
+    def gamma_vdW(self, P, T, E_low=None, nu_0=None):
+
+        reduced_mass_H = (sc.m_H*self.mass) / (sc.m_H + self.mass) # [kg]
+
+        # Get number density from equation-of-state or ideal-gas
+        number_density = self.calculate_number_density(P, T) # [m^-3]
+
+        idx = np.isfinite(self.gamma_vdW_in_table)
+        gamma_vdW = np.zeros_like(self.gamma_vdW_in_table)
+        for perturber, info in self.pressure_broadening_info.items():
+            # Get the broadening parameters
+            VMR = info['VMR']
+            number_density_perturber = number_density * VMR # Perturber density [m^-3]
+
+            mass = info['mass'] # [kg]
+            reduced_mass = mass*self.mass / (mass + self.mass)
+
+            alpha = info.get('alpha', None)
+            C = info.get('C', None)
+            if C is None and alpha is not None:
+                C = (reduced_mass_H/reduced_mass)**(0.3) * (alpha/sc.alpha_H)**(0.4)
+            
+            if C is not None:
+                # Use the C-coefficient (Eq. 19 Sharp & Burrows 2007)
+                gamma_vdW[idx] += (
+                    self.gamma_vdW_in_table[idx] * (T/10e3)**(0.3) * number_density_perturber * C
+                )
+
+            if not self.is_alkali or np.all(idx):
+                # Only replace empty values for alkali atoms
+                continue
+            E_up = E_low + nu_0*sc.h # [J]
+
+            # For alkali atoms (Schweitzer et al. 1996) (Eq. A10 Lacy & Burrows 2024)
+            C_6 = (
+                1.01e-44 * (alpha/sc.alpha_H) * (self.Z+1)**2 *
+                np.abs((sc.E_H/(self.E_ion-E_low))**2 - (sc.E_H/(self.E_ion-E_up))**2)
+            ) # vdW interaction constant [m^6 s^-1]
+            gamma_vdW[~idx] += (
+                1.664461/2 * (sc.k*10e3/reduced_mass)**(0.3) * C_6[~idx]**(0.4) * 
+                (T/10e3)**(0.3) * number_density_perturber
+            ) # [s^-1]
+
+        return gamma_vdW
+
+    def gamma_N(self, A):
+
+        # Natural broadening from Einstein A-coefficient
+        gamma_N = super().gamma_N(A)
+
+        # Use experimental data if available
+        idx = np.isfinite(self.gamma_N_in_table)
+        gamma_N[idx] = self.gamma_N_in_table[idx]
+        return gamma_N
+
+    def _read_transitions(self, input_file, **kwargs):
+
+        input_file = pathlib.Path(input_file)
+        print(f'  Reading transitions from \"{input_file}\"')
+
+        if self.database == 'vald':
+            nu_0, E_low, A, g_up, gamma_vdW, gamma_N = \
+                self._read_VALD_transitions(input_file)
+        elif self.database == 'kurucz':
+            nu_0, E_low, A, g_up, gamma_vdW, gamma_N = \
+                self._read_Kurucz_transitions(input_file)
+
+        # Line-strengths at reference temperature
+        S_0 = (
+            A*g_up / (8*np.pi*(nu_0/sc.c)**2) *
+            np.exp(-E_low/(sc.k*self.T_0)) / self.q_0 * 
+            (1-np.exp(-sc.h*nu_0/(sc.k*self.T_0)))
+        ) # [s^-1/(molec. m^-2)]
+
+        # Sort by wavenumber
+        idx = np.argsort(nu_0)
+        nu_0  = nu_0[idx]
+        E_low = E_low[idx]
+        S_0   = S_0[idx]
+
+        self.gamma_vdW_in_table = gamma_vdW[idx]
+        self.gamma_N_in_table   = gamma_N[idx]
+
+        # Compute the cross-sections, looping over the PT-grid
+        print(f'  Number of lines: {len(nu_0)}')
+        self.loop_over_PT_grid(
+            function=self.calculate_cross_sections,
+            nu_0=nu_0, S_0=S_0, E_low=E_low, A=A, **kwargs
+        )
