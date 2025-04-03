@@ -34,7 +34,7 @@ perturber_info = dict(
 )
 
 P_grid = np.logspace(-5,2,8) # [bar]   # can be given in cmd, one point at a time
-T_grid = np.array([1000,2000])   # [K]     # can be given in cmd, one point at a time
+T_grid = np.array([500,1000,2000,3000])   # [K]     # can be given in cmd, one point at a time
 
 wave_min = 1.0/3.0; wave_max = 50.0 # [um]
 delta_nu = 0.01 # [cm^-1]

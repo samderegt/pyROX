@@ -7,16 +7,26 @@ import utils
 
 def load_data_object(config, **kwargs):
     """
-    Load the data object from the given configuration.
+    Load the data object based on the given configuration.
+
+    Parameters:
+    config (object): Configuration object containing database information.
+    **kwargs: Additional arguments to pass to the data object.
+
+    Returns:
+    object: An instance of the appropriate data object based on the database type.
+
+    Raises:
+    NotImplementedError: If the specified database is not implemented.
     """
     
     database = getattr(config, 'database', '').lower()
 
-    import cia, line_by_line
+    import collision_induced_absorption, line_by_line
     if database == 'cia_hitran':
-        return cia.CIA_HITRAN(config, **kwargs)
+        return collision_induced_absorption.CIA_HITRAN(config, **kwargs)
     elif database == 'cia_borysow':
-        return cia.CIA_Borysow(config, **kwargs)
+        return collision_induced_absorption.CIA_Borysow(config, **kwargs)
 
     if database == 'exomol':
         return line_by_line.ExoMol(config, **kwargs)
@@ -30,96 +40,114 @@ def load_data_object(config, **kwargs):
 
 class CrossSections:
     """
-    Base class for cross-sections.
+    Base class for handling cross-sections.
     """
 
     @staticmethod
     def mask_arrays(arrays, mask, **kwargs):
-        """Apply a mask to the given arrays."""
+        """
+        Apply a mask to the given arrays.
+
+        Parameters:
+        arrays (list): List of arrays to mask.
+        mask (array-like): Boolean mask to apply.
+        **kwargs: Additional arguments for numpy.compress.
+
+        Returns:
+        list: List of masked arrays.
+        """
         return [np.compress(mask, array, **kwargs) for array in arrays]
 
     def __init__(self, config, download=False):
+        """
+        Initialize the CrossSections object.
 
+        Parameters:
+        config (object): Configuration object containing parameters.
+        download (bool): Whether to download data during initialization. Default is False.
+        """
         self.database = config.database.lower()
         if download:
             # First download the data
             self.download_data(config)
             
         # Read the common variables
-        self._read_from_config(config)
+        self._read_configuration_parameters(config)
 
         # Get the wavenumber grid
-        self._configure_nu_grid()
+        self._setup_nu_grid()
 
     def download_data(self, *args, **kwargs):
-        raise NotImplementedError("This method should be implemented in the subclass.")
-
-    def calculate_tmp_outputs(self, *args, **kwargs):
-        raise NotImplementedError("This method should be implemented in the subclass.")
-
-    def plot_merged_outputs(self, *args, **kwargs):
-        raise NotImplementedError("This method should be implemented in the subclass.")
-
-    def save_merged_outputs(self, keys_to_merge, overwrite=False, **kwargs):
         """
-        Merge the temporary files and save the final output. 
+        Download data required for cross-section calculations.
+
+        Raises:
+        NotImplementedError: This method should be implemented in a subclass.
         """
-        print('\nMerging temporary files and saving final output')
+        raise NotImplementedError("This method should be implemented in the subclass.")
 
-        # Ask to overwrite the final output file if it already exists
-        response = ''
-        if not self.final_output_file.exists() or overwrite:
-            response = 'yes'
+    def calculate_temporary_outputs(self, *args, **kwargs):
+        """
+        Calculate temporary outputs for cross-sections.
 
-        while response not in ['yes', 'no', 'y', 'n']:
-            response = input(f'  Warning: Final output file \"{self.final_output_file}\" already exists. Overwrite? (yes/no): ')
-            response = response.strip().lower()
-            if response in ['no', 'n']:
-                raise FileExistsError(f'Not overwriting existing file \"{self.final_output_file}\".')
-            elif response in ['yes', 'y']:
-                break
-            else:
-                print('  Invalid input. Please enter \"yes\" or \"no\".')
-                continue
+        Raises:
+        NotImplementedError: This method should be implemented in a subclass.
+        """
+        raise NotImplementedError("This method should be implemented in the subclass.")
 
-        # Merge the temporary files
-        self.merge_tmp_outputs(keys_to_merge=keys_to_merge)
+    def plot_combined_outputs(self, *args, **kwargs):
+        """
+        Plot merged outputs for cross-sections.
+
+        Raises:
+        NotImplementedError: This method should be implemented in a subclass.
+        """
+        raise NotImplementedError("This method should be implemented in the subclass.")
+
+    def save_combined_outputs(self, keys_to_merge, overwrite=False, **kwargs):
+        """
+        Combine temporary files and save the final output.
+
+        Parameters:
+        keys_to_merge (list): List of keys to combine.
+        overwrite (bool): Whether to overwrite the final output file if it exists. Default is False.
+        **kwargs: Additional arguments for merging.
+        """
+        print('\nCombining temporary files and saving final output')
+
+        # Check if the output file already exist
+        tmp_output_files = self._check_existing_output_files(
+            output_file=self.final_output_file, overwrite_all=overwrite
+            )
+
+        # Combine the temporary files
+        self.combine_temporary_outputs(keys_to_merge=keys_to_merge)
 
         # Flip arrays to be ascending in wavelength
-        if np.diff(self.merged_datasets['wave'])[0] < 0:
-            self.merged_datasets['wave']  = self.merged_datasets['wave'][::-1]
+        if np.diff(self.combined_datasets['wave'])[0] < 0:
+            self.combined_datasets['wave']  = self.combined_datasets['wave'][::-1]
             for key in keys_to_merge:
-                self.merged_datasets[key] = self.merged_datasets[key][::-1]
+                self.combined_datasets[key] = self.combined_datasets[key][::-1]
 
         # Save the merged data
         print(f'  Saving final output to \"{self.final_output_file}\"')
         utils.save_to_hdf5(
             self.final_output_file, 
-            data=self.merged_datasets, 
-            attrs=self.merged_attrs
+            data=self.combined_datasets, 
+            attrs=self.combined_attrs
             )
 
-    def merge_tmp_outputs(self, keys_to_merge=['xsec'], **kwargs):
+    def combine_temporary_outputs(self, keys_to_merge, **kwargs):
         """
-        Combines temporary cross-section files into a single dataset.
-
-        This method reads temporary HDF5 files containing cross-section data,
-        combines them into a single dataset, and returns the combined data along
-        with the associated attributes.
+        Combine temporary output-files into a single dataset.
 
         Parameters:
-        -----------
-        keys_to_merge : list of str, optional
-            List of keys to read from the temporary files. Default is ['xsec'].
-        **kwargs : dict
-            Additional keyword arguments.
+        keys_to_merge (list): List of keys to read from the temporary files. 
+        **kwargs: Additional arguments for merging.
 
         Raises:
-        -------
-        FileNotFoundError
-            If no temporary cross-section files are found.
-        ValueError
-            If the temperature grid is not found in a temporary file.
+        FileNotFoundError: If no temporary cross-section files are found.
+        ValueError: If the temperature grid is not found in a temporary file.
         """
 
         # Check if the outputs should be summed
@@ -131,12 +159,20 @@ class CrossSections:
             raise FileNotFoundError(f'No temporary output files found in \"{self.tmp_output_dir}\".')
         # Sort by modification date
         tmp_files.sort(key=lambda x: x.stat().st_mtime)
+
+        if sum_outputs:
+            print(f'  Summing {len(tmp_files)} temporary files')
+        else:
+            print(f'  Merging {len(tmp_files)} temporary files into a single grid')
+        print(f'  Temporary files:')
+        for tmp_file in tmp_files:
+            print(f'    - \"{tmp_file.name}\"')
         
         # Check compatibility of files before combining
-        wave_main, P_main, T_main = self._merge_PT_grids(tmp_files, sum_outputs)
+        wave_main, P_main, T_main = self._combine_PT_grids(tmp_files, sum_outputs)
 
         # Combine all files into a single array
-        self.merged_datasets = {
+        self.combined_datasets = {
             key: np.zeros((len(wave_main), len(P_main), len(T_main)), dtype=np.float64) 
             for key in keys_to_merge
             }
@@ -172,24 +208,31 @@ class CrossSections:
                     
                     if sum_outputs:
                         # Sum cross-sections
-                        self.merged_datasets[key][:,idx_P,idx_T] += dataset_to_add
+                        if key.startswith('log10('):
+                            # Logarithmic sum
+                            self.combined_datasets[key][:,idx_P,idx_T] = np.log10(
+                                10**self.combined_datasets[key][:,idx_P,idx_T]+10**dataset_to_add
+                            )
+                        else:
+                            # Linear sum
+                            self.combined_datasets[key][:,idx_P,idx_T] += dataset_to_add
                     else:
                         # Avoid summing when only one transition file was used
-                        self.merged_datasets[key][:,idx_P,idx_T] = dataset_to_add
+                        self.combined_datasets[key][:,idx_P,idx_T] = dataset_to_add
 
         # Add the grid-definition
-        self.merged_datasets['wave'] = wave_main
-        self.merged_datasets['T'] = T_main
+        self.combined_datasets['wave'] = wave_main
+        self.combined_datasets['T'] = T_main
         if has_pressure_axis:
-            self.merged_datasets['P'] = P_main
+            self.combined_datasets['P'] = P_main
         else:
             for key in keys_to_merge:
                 # Remove the pressure axis
-                self.merged_datasets[key] = np.squeeze(self.merged_datasets[key], axis=1)
+                self.combined_datasets[key] = np.squeeze(self.combined_datasets[key], axis=1)
 
-        self.merged_attrs = attrs
+        self.combined_attrs = attrs
 
-    def _merge_PT_grids(self, tmp_files, sum_outputs):
+    def _combine_PT_grids(self, tmp_files, sum_outputs):
         """
         Combine the PT-grids of the temporary files.
 
@@ -199,6 +242,9 @@ class CrossSections:
 
         Returns:
         tuple: A tuple containing the main wavelength grid, pressure grid, and temperature grid.
+
+        Raises:
+        ValueError: If the PT grid is not rectangular or grids are incompatible.
         """
         all_PT = []
         for i, tmp_file in enumerate(tmp_files):
@@ -248,6 +294,9 @@ class CrossSections:
     def _check_if_sum_outputs(self):
         """
         Check if the cross-sections should be summed.
+
+        Returns:
+        bool: True if the outputs should be summed, False otherwise.
         """
         transitions_files = self.config.files.get('transitions', [])
         if not isinstance(transitions_files, (list, tuple, np.ndarray)):
@@ -256,16 +305,61 @@ class CrossSections:
             return False
         return True
 
-    def _read_from_config(self, config):
+    def _check_existing_output_files(self, input_files=[''], output_file=None, overwrite_all=False):
         """
-        Read the configuration file.
+        Check if the output files already exist.
 
         Parameters:
-        config (dict): Configuration dictionary.
+        input_files (list): List of input file paths.
+        overwrite_all (bool): Whether to overwrite all existing files.
+
+        Returns:
+        list: List of output file paths.
+        """
+        output_files = []
+        for i, input_file in enumerate(input_files):
+            # Check if the transition file exists
+            input_file = pathlib.Path(input_file)
+            
+            if output_file is None:
+                # Temporary output file
+                output_file = pathlib.Path(
+                    str(self.tmp_output_basename).replace('.hdf5', f'_{input_file.stem}.hdf5')
+                )
+
+            # Check if the output file already exists
+            if output_file.exists() and not overwrite_all:
+                # Ask the user if they want to overwrite the file
+                response = ''
+                while response not in ['y', 'yes', 'n', 'no', 'all']:
+                    response = input(f'  Warning: Output file \"{output_file}\" already exists. Overwrite? (yes/no/all): ')
+                    response = response.strip().lower()
+                    if response in ['no', 'n']:
+                        raise FileExistsError(f'Not overwriting existing file: \"{output_file}\".')
+                    elif response in ['yes', 'y']:
+                        break
+                    elif response == 'all':
+                        overwrite_all = True
+                        break
+                    else:
+                        print('  Invalid input. Please enter \"yes\", \"no\", or \"all\".')
+                        continue
+            output_files.append(output_file)
+        return output_files
+
+    def _read_configuration_parameters(self, config):
+        """
+        Read parameters from the configuration object.
+
+        Parameters:
+        config (object): Configuration object containing parameters.
+
+        Raises:
+        ValueError: If no input-data files are specified in the configuration.
         """
         print('\nReading parameters from the configuration file')
         self.config = config
-        utils.units_warning(self.config)
+        utils.warn_about_units(self.config)
         
         self.database = getattr(self.config, 'database', None)
         self.species  = getattr(self.config, 'species', None)
@@ -304,16 +398,16 @@ class CrossSections:
         self.tmp_output_basename = (self.tmp_output_dir / self.tmp_output_basename).resolve()
         # Ensure the prefix ends with '.hdf5'
         if not self.tmp_output_basename.suffix == '.hdf5':
-            raise ValueError(f'Temporary output \"{self.tmp_output_basename}\" should end with \".hdf5\".')
+            self.tmp_output_basename = self.tmp_output_basename.with_suffix('.hdf5')
 
         # Final output file
         default = default.format(self.species)
         self.final_output_file = getattr(self.config, 'final_output_file', default)
         self.final_output_file = (self.output_data_dir / self.final_output_file).resolve()
 
-    def _configure_nu_grid(self):
+    def _setup_nu_grid(self):
         """
-        Configure the wavenumber grid.
+        Configure the wavenumber grid based on the configuration parameters.
         """
         self.nu_min = sc.c/self.wave_max # [m] -> [s^-1]
         self.nu_max = sc.c/self.wave_min # [m] -> [s^-1]
@@ -336,8 +430,16 @@ class CrossSections:
         adaptive_nu_grid = getattr(self, 'adaptive_nu_grid', False)
         print(f'  Adaptive grid: {adaptive_nu_grid}')
 
-    def _configure_coarse_nu_grid(self, adaptive_delta_nu):
-        
+    def _setup_coarse_nu_grid(self, adaptive_delta_nu):
+        """
+        Configure a coarse wavenumber grid for adaptive calculations.
+
+        Parameters:
+        adaptive_delta_nu (float): Desired resolution for the coarse grid.
+
+        Returns:
+        tuple: Coarse wavenumber grid and its resolution.
+        """
         # Use the original grid
         if not self.adaptive_nu_grid:
             return self.nu_grid, self.delta_nu

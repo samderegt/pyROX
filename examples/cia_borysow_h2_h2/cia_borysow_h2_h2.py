@@ -3,6 +3,12 @@ import numpy as np
 database = 'cia_borysow'
 species  = 'h2-h2'
 
+# Instructions to download
+urls = [
+    'https://www.astro.ku.dk/~aborysow/programs/final_CIA_LT.dat',
+    'https://www.astro.ku.dk/~aborysow/programs/final_CIA_HT.dat',
+    'https://www.astro.ku.dk/~aborysow/programs/CIA.H2H2.Yi', 
+]
 # Input/output-directories
 input_data_dir  = './examples/cia_borysow_h2_h2/input_data/'
 output_data_dir = './examples/cia_borysow_h2_h2/'

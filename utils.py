@@ -126,36 +126,49 @@ def read_from_hdf5(file, keys_to_read, return_attrs=False):
 
     return datasets
 
-def print_welcome_message():
+def log10_round(array, decimals=3):
     """
-    Print a welcome message.
-    """
+    Compute the base-10 logarithm of an array and round the result to save memory.
 
+    Parameters:
+    array (array-like): Input array for which the logarithm is computed.
+    decimals (int): Number of decimal places to round to (default is 3).
+
+    Returns:
+    numpy.ndarray: Array with the base-10 logarithm values rounded to the specified decimals.
+    """
+    return np.around(np.log10(array), decimals=decimals)
+
+def display_welcome_message():
+    """
+    Display a welcome message.
+    """
     print('\n'+'='*80)
     print('  Welcome to pyROX: Rapid Opacity X-sections for Python')
     print('='*80+'\n')
 
     return time.time()
 
-def print_finish_message(time_start):
+def display_finish_message(time_start):
     """
-    Print a finish message and the elapsed time.
+    Display a finish message and the elapsed time.
 
     Parameters:
     time_start (float): Start time of the process.
     """
-
     time_finish = time.time()
     time_elapsed = time_finish - time_start
 
     print('\nTime elapsed: {}'.format(str(datetime.timedelta(seconds=time_elapsed))))
     print('='*80+'\n')
 
-def add_to_config(config, **kwargs):
-
+def update_config_with_args(config, **kwargs):
+    """
+    Update the configuration object with command-line arguments.
+    """
     for key, value in kwargs.items():
         if value is None:
-            continue # Parameter not given
+            continue  # Parameter not given
 
         new_value = value
         if isinstance(value, str):
@@ -174,8 +187,13 @@ def add_to_config(config, **kwargs):
 
     return config
 
-def units_warning(config):
+def warn_about_units(config):
+    """
+    Display a warning message about expected units for specific parameters.
 
+    Parameters:
+    config (object): Configuration object containing parameter definitions.
+    """
     default_units = {
         'mass': 'amu',
         'P_grid': 'bar',
@@ -201,15 +219,17 @@ def units_warning(config):
         print(f'  - {key} [{unit}]')
     print()
 
-def find_nearest(a, b):
-
+def find_closest_indices(a, b):
+    """
+    Find the indices of the closest elements in arrays a and b.
+    """
     a_is_array = isinstance(a, (list, tuple, np.ndarray))
     b_is_array = isinstance(b, (list, tuple, np.ndarray))
 
     if a_is_array and b_is_array:
-        idx = np.abs(np.asarray(a)[:,None]-np.asarray(b)[None,:]).argmin(axis=0)
+        idx = np.abs(np.asarray(a)[:,None] - np.asarray(b)[None,:]).argmin(axis=0)
     else:
-        idx = np.abs(a-b).argmin()
+        idx = np.abs(a - b).argmin()
     return idx, a[idx]
 
 
@@ -218,12 +238,22 @@ class Broaden_Gharib_Nezhad_ea_2021:
     Broadening parameterisation from Gharib-Nezhad et al. (2021).
     """
 
-    @staticmethod
-    def Pade_equation(self, J, a, b):
-        term1 = a[0] + a[1]*J + a[2]*J**2 + a[3]*J**3
-        term2 = 1 + b[0]*J + b[1]*J**2 + b[2]*J**3 + b[3]*J**4
+    def pade_equation(self, J, a, b):
+        """
+        Pade approximation for the broadening coefficient.
+
+        Parameters:
+        J (float): Rotational quantum number.
+        a (array-like): Coefficients for the numerator.
+        b (array-like): Coefficients for the denominator.
+
+        Returns:
+        float: Broadening coefficient.
+        """
+        numerator = a[0] + a[1]*J + a[2]*J**2 + a[3]*J**3
+        denominator = 1 + b[0]*J + b[1]*J**2 + b[2]*J**3 + b[3]*J**4
         
-        return term1 / term2
+        return numerator / denominator # [cm^-1]
 
     def __init__(self, species='AlH'):
         """
@@ -276,7 +306,7 @@ class Broaden_Gharib_Nezhad_ea_2021:
         Returns:
         float: Broadening coefficient.
         """
-        return self.Pade_equation(J, a=self.a_H2, b=self.b_H2) * (1e2*sc.c) # [cm^-1] -> [s^-1]
+        return self.pade_equation(J, a=self.a_H2, b=self.b_H2) * (1e2*sc.c) # [cm^-1] -> [s^-1]
     
     def gamma_He(self, J):
         """
@@ -288,4 +318,4 @@ class Broaden_Gharib_Nezhad_ea_2021:
         Returns:
         float: Broadening coefficient.
         """
-        return self.Pade_equation(J, a=self.a_He, b=self.b_He) * (1e2*sc.c) # [cm^-1] -> [s^-1]
+        return self.pade_equation(J, a=self.a_He, b=self.b_He) * (1e2*sc.c) # [cm^-1] -> [s^-1]
