@@ -12,6 +12,7 @@ from .lbl import LineByLine
 class Kurucz(LineByLine):
 
     parent_dir = pathlib.Path(__file__).parent.resolve()
+    parent_dir = parent_dir.parent / 'data'
     atoms_info = read_csv(parent_dir/'atoms_info.csv', index_col=0)
 
     def download_data(self, config):

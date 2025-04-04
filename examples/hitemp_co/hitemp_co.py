@@ -40,8 +40,10 @@ perturber_info = dict(
         ), 
 )
 
-P_grid = np.logspace(-5,2,8) # [bar]
-T_grid = np.array([1000,2000]) # [K]
+# P_grid = np.logspace(-5,2,8) # [bar]
+# T_grid = np.array([1000,2000]) # [K]
+P_grid = np.array([1e-5]) # [bar]
+T_grid = np.array([2000.]) # [K]
 
 wave_min = 1.0/3.0; wave_max = 50.0 # [um]
 delta_nu = 0.01 # [cm^-1]
@@ -55,3 +57,10 @@ global_cutoff = 1e-45
 
 # gamma_V [cm^-1], P [bar]
 #wing_cutoff = lambda _, P: 25 if P<=200 else 100 # Gharib-Nezhad et al. (2024) DEFAULT
+
+pRT3_metadata = dict(
+    DOI = '10.1088/0067-0049/216/1/15', # DOI of the data
+    mol_mass = mass, 
+    mol_name = 'CO',
+    isotopologue_id = {'C':12, 'O':16}, 
+)

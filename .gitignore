@@ -1,5 +1,4 @@
 __pycache__/
-logs/
 
 examples/*/input_data/
 examples/*/tmp/
@@ -7,9 +6,5 @@ examples/*/*.pdf
 examples/*/*.h5
 examples/*/*.hdf5
 
-test/
-cross_sec_outputs/
-input/
-input_data/
 convert_all.ipynb
 *.code-workspace

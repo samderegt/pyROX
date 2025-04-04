@@ -232,6 +232,48 @@ def find_closest_indices(a, b):
         idx = np.abs(a - b).argmin()
     return idx, a[idx]
 
+def prt_resolving_space(start, stop, resolving_power):
+    """Return numbers evenly spaced at the specified resolving power.
+
+    Args:
+        start:
+            The starting value of the sequence.
+        stop:
+            The end value of the sequence.
+        resolving_power:
+            Resolving power of the sample
+
+    Returns:
+        Samples spaced following the specified resolving power.
+
+    """
+    # Check for inputs validity
+    if start > stop:
+        raise ValueError(f"start ({start}) must be lower than stop {stop}")
+
+    if resolving_power <= 0:
+        raise ValueError(f"resolving power ({resolving_power}) must be strictly positive")
+
+    inverse_resolving_power = 1 / resolving_power
+
+    # Get maximum space length (much higher than required)
+    size_max = int(np.ceil((stop - start) / (start / resolving_power)))
+
+    # Start generating space
+    samples = [start]
+    i = 0
+
+    for i in range(size_max):
+        samples.append(samples[-1] * np.exp(inverse_resolving_power))
+
+        if samples[-1] >= stop:
+            break
+
+    if i == size_max - 1 and samples[-1] < stop:
+        raise ValueError(f"maximum size ({size_max}) reached before reaching stop ({samples[-1]} < {stop})")
+
+    return np.array(samples)
+
 
 class Broaden_Gharib_Nezhad_ea_2021:
     """

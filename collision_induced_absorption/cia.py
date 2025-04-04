@@ -100,14 +100,14 @@ class CIA(CrossSections):
                 data={
                     'wave': self.wave_grid, 
                     'T': T_grid, 
-                    'k': abs_coeff_k.T, 
-                    'alpha': abs_coeff_alpha.T
+                    'log10(k)': utils.log10_round(abs_coeff_k.T, decimals=3), 
+                    'log10(alpha)': utils.log10_round(abs_coeff_alpha.T, decimals=3)
                     },
                 attrs={
                     'wave': {'units': 'm'}, 
                     'T': {'units': 'K'}, 
-                    'k': {'units': 'm^5 molecule^-2'}, 
-                    'alpha': {'units': 'm^-1 molecule^-2'}
+                    'log10(k)': {'units': 'log10(m^5 molecule^-2)'}, 
+                    'log10(alpha)': {'units': 'log10(m^-1 molecule^-2)'}
                     }
                 )
 
@@ -118,7 +118,7 @@ class CIA(CrossSections):
         Parameters:
         **kwargs: Additional arguments for saving.
         """
-        super().save_combined_outputs(keys_to_merge=['k','alpha'], **kwargs)
+        super().save_combined_outputs(keys_to_merge=['log10(k)','log10(alpha)'], **kwargs)
 
     def plot_combined_outputs(self, cmap='coolwarm', xscale='log', yscale='log', xlim=None, ylim=None, **kwargs):
         """
@@ -137,11 +137,11 @@ class CIA(CrossSections):
 
         # Load the merged data
         self.combined_datasets = utils.read_from_hdf5(
-            self.final_output_file, keys_to_read=['wave', 'T', 'k', 'alpha']
+            self.final_output_file, keys_to_read=['wave', 'T', 'log10(k)', 'log10(alpha)']
             )
         wave = self.combined_datasets['wave'] * 1e6 # [m] -> [um]
-        k = self.combined_datasets['k'] * (1e2)**5 # [m^5 molecule^-2] -> [cm^5 molecule^-2]
-        alpha = self.combined_datasets['alpha'] * (1e2)**(-2) # [m^-1 molecule^-2] -> [cm^-1 molecule^-2]
+        k = 10**self.combined_datasets['log10(k)'] * (1e2)**5 # [m^5 molecule^-2] -> [cm^5 molecule^-2]
+        alpha = 10**self.combined_datasets['log10(alpha)'] * (1e2)**(-2) # [m^-1 molecule^-2] -> [cm^-1 molecule^-2]
 
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(9,6), nrows=2, sharex=True)
@@ -181,11 +181,12 @@ class CIA(CrossSections):
         """
         raise NotImplementedError('Conversion to petitRADTRANS-v2.0 format is not implemented.')
     
-    def convert_to_pRT3(self, **kwargs):
+    def convert_to_pRT3(self, contributor=None, **kwargs):
         """
         Convert the CIA data to petitRADTRANS v3.0 format.
 
         Parameters:
+        contributor (str): Name of the contributor for these data.
         **kwargs: Additional arguments for conversion.
 
         Raises:
@@ -205,7 +206,6 @@ class CIA(CrossSections):
             if key in pRT3_metadata:
                 continue
             raise KeyError(f"Required key '{key}' not found in pRT3_metadata.")
-
 
         data = {
             'DOI': np.atleast_1d(pRT3_metadata['DOI']),
@@ -227,21 +227,20 @@ class CIA(CrossSections):
             wnrange = {'long_name': 'Wavenumber range covered', 'units': 'cm^-1'}
         )
         # Add contributors if given
-        contributor = kwargs.get('contributor', None)
         if contributor is not None:
             attrs['DOI']['contributor'] = contributor
 
         # Load the merged data
         self.combined_datasets = utils.read_from_hdf5(
-            self.final_output_file, keys_to_read=['wave', 'T', 'k', 'alpha']
+            self.final_output_file, keys_to_read=['wave', 'T', 'log10(alpha)']
             )
 
-        wave_min = self.combined_datasets['wave'].min()/sc.micron
-        wave_max = self.combined_datasets['wave'].max()/sc.micron
-        resolution = sc.c/sc.micron/self.delta_nu # At 1 um
+        wave_min = self.combined_datasets['wave'].min() / sc.micron
+        wave_max = self.combined_datasets['wave'].max() / sc.micron
+        resolution = sc.c / sc.micron / self.delta_nu # Resolution at 1 um
 
         # Fill the dictionary
-        data['alpha'] = 1e-2*self.combined_datasets['alpha'][::-1,:].T # [m^-1 molecule^-2] -> [cm^-1 molecule^-2], ascending in wavenumber
+        data['alpha'] = 1e-2 * 10**self.combined_datasets['log10(alpha)'][::-1,:].T # [m^-1 molecule^-2] -> [cm^-1 molecule^-2]
         data['t'] = self.combined_datasets['T'] # [K]
         data['wavenumbers'] = 1e-2/self.combined_datasets['wave'][::-1] # [m] -> [cm^-1], ascending in wavenumber
         data['wlrange'] = [wave_min, wave_max] # [um]
@@ -251,27 +250,11 @@ class CIA(CrossSections):
         pRT_file = '{}--{}-NatAbund__{}.R{:.0f}_{:.1f}-{:.0f}mu.ciatable.petitRADTRANS.h5'
         pRT_file = pRT_file.format(
             pRT3_metadata['mol_name'][0], pRT3_metadata['mol_name'][1], 
-            self.database, resolution, wave_min, wave_max
+            self.database.replace('cia_','').upper(), resolution, 
+            wave_min, wave_max
             )
         pRT_file = self.output_data_dir / pRT_file
 
         # Save the datasets
         utils.save_to_hdf5(pRT_file, data=data, attrs=attrs, compression=None)
-
-        '''
-        import matplotlib.pyplot as plt
-        import h5py 
-        with h5py.File('/net/schenk/data2/regt/pRT3_input_data/input_data/opacities/continuum/collision_induced_absorptions/H2--H2/H2--H2-NatAbund/H2--H2-NatAbund__BoRi.R831_0.6-250mu.ciatable.petitRADTRANS.h5', 'r') as f:
-
-            wavenumbers = f['wavenumbers'][:]
-            alpha = f['alpha'][:]
-            T = f['t'][:]
-
-            print(wavenumbers.shape, data['wavenumbers'].shape)
-            plt.plot(1e4/wavenumbers, alpha[T==1000.,:][0])
-            plt.plot(1e4/data['wavenumbers'], data['alpha'][data['t']==1000.,:][0], '--')
-            plt.xscale('log')
-            plt.yscale('log')
-            plt.savefig(f'{self.output_data_dir}/test.pdf', bbox_inches='tight')
-            plt.close()
-        '''
+        print(f'  Saved to {pRT_file}')

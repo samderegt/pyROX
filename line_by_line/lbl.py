@@ -4,6 +4,7 @@ from scipy.interpolate import interp1d
 from scipy.special import wofz
 
 import pathlib
+import datetime
 import re
 
 from tqdm import tqdm
@@ -39,7 +40,7 @@ class LineProfileHelper:
 
     def normalise_wing_cutoff(self, S, cutoff_distance, gamma_L):
         """
-        Normalize the line strength to account for wing cutoff.
+        Normalise the line strength to account for wing cutoff.
 
         Parameters:
         S (array): Line strengths.
@@ -47,7 +48,7 @@ class LineProfileHelper:
         gamma_L (array): Lorentzian widths.
 
         Returns:
-        array: Normalized line strengths.
+        array: Normalised line strengths.
         """
         # Eq. A6 Lacy & Burrows (2023)
         return S / ((2/np.pi)*np.arctan(cutoff_distance/gamma_L))
@@ -93,7 +94,7 @@ class LineProfileHelper:
             n = info['n']
 
             # Calculate the broadening parameter
-            gamma_vdW += gamma * (T/self.T_0)**n * (P/sc.atm) # [s^-1]
+            gamma_vdW += gamma * (self.T_0/T)**n * (P/sc.atm) * VMR # [s^-1]
 
         return gamma_vdW
 
@@ -261,7 +262,7 @@ class LineProfileHelper:
             gamma_G_chunk = gamma_G[idx_chunk_l:idx_chunk_h,None]
             a_chunk = a[idx_chunk_l:idx_chunk_h,None]
             S_chunk = S[idx_chunk_l:idx_chunk_h,None] # [s^-1/(molecule m^-2)]
-
+            
             # Correct for coarse grid | (N_lines,1)
             nu_grid_chunk = nu_grid[idx_to_insert_chunk,None]
 
@@ -489,8 +490,9 @@ class LineByLine(CrossSections, LineProfileHelper):
                 np.array(broadening_params[3])[mask_diet]
 
         for perturber, info in self.pressure_broadening_info.items():
-            self.pressure_broadening_info[perturber]['gamma'] = \
-                np.array(info['gamma'], dtype=float)
+            # self.pressure_broadening_info[perturber]['gamma'] = \
+            #     np.array(info['gamma'], dtype=float)
+            pass
 
         print(f'  Pressure broadening info:')
         self.mean_mass, VMR_total = 0., 0.
@@ -503,7 +505,7 @@ class LineByLine(CrossSections, LineProfileHelper):
             # Convert gamma to SI units [cm^-1] -> [s^-1]
             if method != 'function':
                 self.pressure_broadening_info[perturber]['gamma'] = info['gamma'] * 1e2*sc.c
-        
+
         if VMR_total > 1.0:
             raise ValueError('Total volume mixing ratio of perturbers exceeds 1.0.')
         if VMR_total < 1.0:
@@ -526,48 +528,6 @@ class LineByLine(CrossSections, LineProfileHelper):
             kind='linear', fill_value='extrapolate'
             )
         self.calculate_partition_function = interpolation_function
-
-    '''
-    def _check_existing_output_files(self, input_files, overwrite_all=False):
-        """
-        Check if the output files already exist.
-
-        Parameters:
-        input_files (list): List of input file paths.
-        overwrite_all (bool): Whether to overwrite all existing files.
-
-        Returns:
-        list: List of output file paths.
-        """
-        output_files = []
-        for i, input_file in enumerate(input_files):
-            # Check if the transition file exists
-            input_file = pathlib.Path(input_file)
-            
-            # Check if the temporary output file already exists
-            output_file = pathlib.Path(
-                str(self.tmp_output_basename).replace('.hdf5', f'_{input_file.stem}.hdf5')
-            )
-
-            if output_file.exists() and not overwrite_all:
-                # Ask the user if they want to overwrite the file
-                response = ''
-                while response not in ['y', 'yes', 'n', 'no', 'all']:
-                    response = input(f'  Warning: Temporary output file \"{output_file}\" already exists. Overwrite? (yes/no/all): ')
-                    response = response.strip().lower()
-                    if response in ['no', 'n']:
-                        raise FileExistsError(f'Not overwriting existing file: \"{output_file}\".')
-                    elif response in ['yes', 'y']:
-                        break
-                    elif response == 'all':
-                        overwrite_all = True
-                        break
-                    else:
-                        print('  Invalid input. Please enter \"yes\", \"no\", or \"all\".')
-                        continue
-            output_files.append(output_file)
-        return output_files
-    '''
 
     def iterate_over_PT_grid(self, function, progress_bar=True, **kwargs):
         """
@@ -607,11 +567,17 @@ class LineByLine(CrossSections, LineProfileHelper):
         delta (array, optional): Pressure shift coefficients.
         **kwargs: Additional arguments.
         """
+
         # Get the line-widths
         gamma_N   = self.compute_natural_broadening(A) # Lorentzian components
         gamma_vdW = self.compute_vdw_broadening(P, T, E_low=E_low, nu_0=nu_0)
+        #gamma_vdW /= (4*np.pi)
         gamma_L   = self.compute_lorentz_width(gamma_vdW, gamma_N)
         gamma_G   = self.compute_doppler_broadening(T, nu_0) # Gaussian component
+
+        print(gamma_vdW)
+        print(gamma_N)
+        print(gamma_G)
 
         for nu_0_i in self.nu_0_to_ignore:
             # Ignore lines with a wavenumber close to the one to ignore
@@ -622,9 +588,8 @@ class LineByLine(CrossSections, LineProfileHelper):
         nu_0 = self.pressure_shift(P, T, nu_0, delta=delta)
 
         # Select only the lines within the wavelength range
-        nu_0, S_0, E_low, gamma_N, gamma_vdW, gamma_L, gamma_G = self.mask_arrays(
-            [nu_0, S_0, E_low, gamma_N, gamma_vdW, gamma_L, gamma_G], 
-            mask=(nu_0>self.nu_min) & (nu_0<self.nu_max)
+        nu_0, S_0, E_low, gamma_L, gamma_G = self.mask_arrays(
+            [nu_0, S_0, E_low, gamma_L, gamma_G], mask=(nu_0>self.nu_min) & (nu_0<self.nu_max)
             )
         if len(S_0) == 0:
             return # No more lines
@@ -754,7 +719,7 @@ class LineByLine(CrossSections, LineProfileHelper):
             self.final_output_file, keys_to_read=['wave', 'P', 'T', 'log10(xsec)']
         )
         wave = self.combined_datasets['wave'] * 1e6 # [m] -> [um]
-        xsec = 10**self.combined_datasets['log10(xsec)'] * (1e2)**2
+        xsec = 1/(self.mass*1e3) * 10**self.combined_datasets['log10(xsec)'] * (1e2)**2
 
         # Avoid plotting the whole dataset
         if xlim is None:
@@ -821,11 +786,136 @@ class LineByLine(CrossSections, LineProfileHelper):
         """
         raise NotImplementedError('Conversion to petitRADTRANS-v2.0 format not implemented.')
 
-    def convert_to_pRT3(self):
+    def convert_to_pRT3(self, contributor=None, **kwargs):
         """
         Convert the cross-sections to petitRADTRANS v3.0 format.
 
+        Parameters:
+        contributor (str): Name of the contributor for these data.
+        **kwargs: Additional arguments for conversion.
+
         Raises:
-        NotImplementedError: If the method is not implemented.
+        ValueError: If required metadata is missing in the configuration.
+        KeyError: If required keys are missing in the metadata.
         """
-        raise NotImplementedError('Conversion to petitRADTRANS-v3.0 format not implemented.')
+        print(f'\nConverting to petitRADTRANS-v3.0 format')
+
+        # Load the attributes for the hdf5 file
+        pRT3_metadata = getattr(self.config, 'pRT3_metadata', None)
+        if pRT3_metadata is None:
+            raise ValueError('No pRT3_metadata specified in the configuration.')
+
+        # Check if required keys are in pRT3_metadata
+        for key in ['DOI', 'mol_mass', 'mol_name', 'isotopologue_id']:
+            if key not in pRT3_metadata:
+                raise KeyError(f"Required key '{key}' not found in pRT3_metadata.")
+
+        data = {
+            'DOI': np.atleast_1d(pRT3_metadata['DOI']),
+            'Date_ID': np.atleast_1d(f'petitRADTRANS-v3_{datetime.datetime.now(datetime.timezone.utc).isoformat()}'),
+            'mol_mass': np.atleast_1d(pRT3_metadata['mol_mass']),
+            'mol_name': np.atleast_1d(pRT3_metadata['mol_name']), 
+            'temperature_grid_type': np.atleast_1d('regular'),
+        }
+
+        # Attributes of all datasets
+        attrs = dict(
+            DOI = {'additional_description': 'Calculated with pyROX', 'long_name': 'Data object identifier linked to the data'},
+            Date_ID = {'long_name': 'ISO 8601 UTC time (https://docs.python.org/3/library/datetime.html) at which the table has been created, along with the version of petitRADTRANS'},
+            xsecarr = {'long_name': 'Table of the cross-sections with axes (pressure, temperature, wavenumber)', 'units': 'cm^2/molecule'},
+            mol_mass = {'long_name': 'Mass of the species', 'units': 'AMU'},
+            mol_name = {'long_name': 'Name of the species described'},
+            p = {'long_name': 'Pressure grid', 'units': 'bar'},
+            t = {'long_name': 'Temperature grid', 'units': 'K'},
+            temperature_grid_type = {'long_name': 'Whether the temperature grid is "regular" (same temperatures for all pressures) or "pressure-dependent"'},
+            bin_edges = {'long_name': 'Wavenumber grid', 'units': 'cm^-1'},
+            wlrange = {'long_name': 'Wavelength range covered', 'units': 'µm'},
+            wnrange = {'long_name': 'Wavenumber range covered', 'units': 'cm^-1'}
+        )
+        # Add contributors if given
+        if contributor is not None:
+            attrs['DOI']['contributor'] = contributor
+
+        # Load the merged data
+        self.combined_datasets = utils.read_from_hdf5(
+            self.final_output_file, keys_to_read=['wave', 'P', 'T', 'log10(xsec)']
+        )
+        xsec = 10**self.combined_datasets['log10(xsec)'] * (1e2)**2 # [m^2 molecule^-1] -> [cm^2 molecule^-1]
+        xsec = np.moveaxis(xsec, 0, -1) # (wave, P, T) -> (P, T, wave)
+
+        # Interpolate onto pRT's wavelength grid
+        pRT_wave = utils.prt_resolving_space(0.11, 250, resolving_power=1e6)
+        pRT_wave *= sc.micron # [um] -> [m]
+        interp_func = interp1d(
+            x=self.combined_datasets['wave'], y=np.log10(xsec), kind='linear', 
+            bounds_error=False, fill_value=-250, axis=-1
+        )
+        xsec = 10**interp_func(pRT_wave) # [cm^2 molecule^-1]
+
+        wave_min = max(self.combined_datasets['wave'].min(), pRT_wave.min()) / sc.micron # [m] -> [um]
+        wave_max = min(self.combined_datasets['wave'].max(), pRT_wave.max()) / sc.micron
+        mask_wave = (pRT_wave>=wave_min) & (pRT_wave<=wave_max)
+        xsec = xsec[:,:,mask_wave] # Crop to the range of valid wavelengths
+        pRT_wave = pRT_wave[mask_wave]
+
+        resolution = sc.c / sc.micron / self.delta_nu  # Resolution at 1 um
+
+        # Fill the dictionary
+        data['xsecarr'] = xsec[:,:,::-1]
+        data['p'] = self.combined_datasets['P'] / sc.bar  # [Pa] -> [bar]
+        data['t'] = self.combined_datasets['T']  # [K]
+        data['bin_edges'] = 1e-2 / pRT_wave[::-1]  # [m] -> [cm^-1], ascending in wavenumber
+        data['wlrange'] = [wave_min, wave_max]  # [µm]
+        data['wnrange'] = [1e4 / wave_max, 1e4 / wave_min]  # [cm^-1]
+
+        # Complete the filename
+        isotopologue_id = '-'.join([
+            f'{mass_number}{element}' for element, mass_number in \
+            pRT3_metadata['isotopologue_id'].items()
+            ])
+        pRT_file = '{}__{}.R{:.0e}_{:.1f}-{:.1f}mu.xsec.petitRADTRANS.h5'
+        pRT_file = pRT_file.format(
+            isotopologue_id, self.database.upper(), resolution, wave_min, wave_max
+        )
+        pRT_file = self.output_data_dir / pRT_file
+
+        # Save the datasets
+        utils.save_to_hdf5(pRT_file, data=data, attrs=attrs, compression=None)
+        print(f'  Saved to {pRT_file}')
+
+        return
+        # --------------------------------------------
+
+        import matplotlib.pyplot as plt
+        import h5py
+
+        with h5py.File('/net/lem/data2/regt/pyROX/examples/hitemp_co/12C-16O__HITEMP.R1e+06_0.1-250.0mu.xsec.petitRADTRANS.h5', 'r') as f:
+            for key in f.keys():
+                print(key, f[key][:])
+
+        print()
+        with h5py.File(pRT_file, 'r') as f:
+            for key in f.keys():
+                # print(f'  {key}: {f[key].shape}')
+                # print(dict(f[key].attrs))
+                print(key, f[key][:])
+        return
+
+        fig, ax = plt.subplots(figsize=(12,5))
+        with h5py.File('/net/schenk/data2/regt/pRT3_input_data/input_data/opacities/lines/line_by_line/CO/12C-16O/12C-16O__HITEMP.R1e+06_0.3-28.0mu.xsec.petitRADTRANS.h5', 'r') as f:
+            idx_T, T = utils.find_closest_indices(f['t'][:], 2000.)
+            idx_P, P = utils.find_closest_indices(f['p'][:], 1e-5)
+
+            ax.plot(1e4/f['bin_edges'][:], f['xsecarr'][idx_P,idx_T,:], label=f'T={T:.0f} K, P={P:.0e} bar', lw=1, alpha=0.7)
+
+        with h5py.File(pRT_file, 'r') as f:
+            idx_T, T = utils.find_closest_indices(f['t'][:], 2000.)
+            idx_P, P = utils.find_closest_indices(f['p'][:], 1e-5)
+
+            ax.plot(1e4/f['bin_edges'][:], f['xsecarr'][idx_P,idx_T,:], label=f'T={T:.0f} K, P={P:.0e} bar', lw=1, alpha=0.7)
+
+        ax.legend(loc='lower right')
+        ax.set(xscale='log', yscale='log', xlabel='wavelength [um]', ylabel='xsec [cm^2 molecule^-1]')
+        ax.set_ylim(1e-45)
+        plt.savefig(self.output_data_dir / 'xsec_pRT3.pdf', bbox_inches='tight')
+        plt.close()
