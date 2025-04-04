@@ -489,11 +489,6 @@ class LineByLine(CrossSections, LineProfileHelper):
             self.pressure_broadening_info[perturber]['J'] = \
                 np.array(broadening_params[3])[mask_diet]
 
-        for perturber, info in self.pressure_broadening_info.items():
-            # self.pressure_broadening_info[perturber]['gamma'] = \
-            #     np.array(info['gamma'], dtype=float)
-            pass
-
         print(f'  Pressure broadening info:')
         self.mean_mass, VMR_total = 0., 0.
         for perturber, info in self.pressure_broadening_info.items():
@@ -567,7 +562,6 @@ class LineByLine(CrossSections, LineProfileHelper):
         delta (array, optional): Pressure shift coefficients.
         **kwargs: Additional arguments.
         """
-
         # Get the line-widths
         gamma_N   = self.compute_natural_broadening(A) # Lorentzian components
         gamma_vdW = self.compute_vdw_broadening(P, T, E_low=E_low, nu_0=nu_0)
@@ -714,7 +708,8 @@ class LineByLine(CrossSections, LineProfileHelper):
             self.final_output_file, keys_to_read=['wave', 'P', 'T', 'log10(xsec)']
         )
         wave = self.combined_datasets['wave'] * 1e6 # [m] -> [um]
-        xsec = 1/(self.mass*1e3) * 10**self.combined_datasets['log10(xsec)'] * (1e2)**2
+        xsec = 10**self.combined_datasets['log10(xsec)'] * (1e2)**2
+        #xsec *= 1/(self.mass*1e3)
 
         # Avoid plotting the whole dataset
         if xlim is None:
@@ -853,7 +848,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         resolution = sc.c / sc.micron / self.delta_nu  # Resolution at 1 um
 
         # Fill the dictionary
-        data['xsecarr'] = xsec[:,:,::-1]
+        data['xsecarr'] = xsec[:,:,::-1] # Ascending in wavenumber
         data['p'] = self.combined_datasets['P'] / sc.bar  # [Pa] -> [bar]
         data['t'] = self.combined_datasets['T']  # [K]
         data['bin_edges'] = 1e-2 / pRT_wave[::-1]  # [m] -> [cm^-1], ascending in wavenumber
@@ -879,38 +874,3 @@ class LineByLine(CrossSections, LineProfileHelper):
         # Save the datasets
         utils.save_to_hdf5(pRT_file, data=data, attrs=attrs, compression=None)
         print(f'  Saved to {pRT_file}')
-
-        return
-        # --------------------------------------------
-
-        import matplotlib.pyplot as plt
-        import h5py
-
-        fig, ax = plt.subplots(figsize=(12,6))
-        with h5py.File('/net/schenk/data2/regt/pRT3_input_data/input_data/opacities/lines/line_by_line/K/39K/39K__Kurucz.R1e+06_0.3-28.0mu.xsec.petitRADTRANS.h5', 'r') as f:
-            idx_T, T = utils.find_closest_indices(f['t'][:], 3000.)
-            idx_P, P = utils.find_closest_indices(f['p'][:], 1e5)
-
-            ax.plot(1e4/f['bin_edges'][:], 1/(self.mass*1e-3)*f['xsecarr'][idx_P,idx_T,:], label=f'T={T:.0f} K, P={P:.0e} bar', lw=1, alpha=0.7)
-
-        with h5py.File('/net/lem/data2/regt/pyROX/examples/kurucz_k/39K__LorCut.R1e6_0.3-28mu.xsec.petitRADTRANS.h5', 'r') as f:
-            idx_T, T = utils.find_closest_indices(f['t'][:], 3000.)
-            idx_P, P = utils.find_closest_indices(f['p'][:], 1e5)
-
-            ax.plot(1e4/f['bin_edges'][:], 1/(self.mass*1e-3)*f['xsecarr'][idx_P,idx_T,:], label=f'T={T:.0f} K, P={P:.0e} bar', lw=1, alpha=0.7)
-
-        with h5py.File(pRT_file, 'r') as f:
-            idx_T, T = utils.find_closest_indices(f['t'][:], 3000.)
-            idx_P, P = utils.find_closest_indices(f['p'][:], 1e5)
-
-            ax.plot(1e4/f['bin_edges'][:], 1/(self.mass*1e-3)*f['xsecarr'][idx_P,idx_T,:], label=f'T={T:.0f} K, P={P:.0e} bar', lw=1, alpha=0.7)
-            
-        ax.legend(loc='lower right')
-        #ax.set(xscale='log', yscale='log', xlabel='wavelength [um]', ylabel='xsec [cm^2 molecule^-1]')
-        ax.set(xscale='log', yscale='log', xlabel='wavelength [um]', ylabel='xsec [cm^2 g^-1]')
-        #ax.set_ylim(1e-45)
-        ax.set_ylim(1e-3, 1e20)
-        #ax.set_xlim(0.766, 0.768); ax.set_xscale('linear')
-        ax.set_xlim(0.3, 2.5); ax.set_xscale('linear')
-        plt.savefig(self.output_data_dir / 'xsec_pRT3.pdf', bbox_inches='tight')
-        plt.close()

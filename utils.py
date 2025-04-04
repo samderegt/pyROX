@@ -295,7 +295,7 @@ class Broaden_Gharib_Nezhad_ea_2021:
         numerator = a[0] + a[1]*J + a[2]*J**2 + a[3]*J**3
         denominator = 1 + b[0]*J + b[1]*J**2 + b[2]*J**3 + b[3]*J**4
         
-        return numerator / denominator # [cm^-1]
+        return numerator / denominator * (1e2*sc.c) # [cm^-1] -> [s^-1]
 
     def __init__(self, species='AlH'):
         """
@@ -348,7 +348,7 @@ class Broaden_Gharib_Nezhad_ea_2021:
         Returns:
         float: Broadening coefficient.
         """
-        return self.pade_equation(J, a=self.a_H2, b=self.b_H2) * (1e2*sc.c) # [cm^-1] -> [s^-1]
+        return self.pade_equation(J, a=self.a_H2, b=self.b_H2) # [s^-1]
     
     def gamma_He(self, J):
         """
@@ -360,4 +360,4 @@ class Broaden_Gharib_Nezhad_ea_2021:
         Returns:
         float: Broadening coefficient.
         """
-        return self.pade_equation(J, a=self.a_He, b=self.b_He) * (1e2*sc.c) # [cm^-1] -> [s^-1]
+        return self.pade_equation(J, a=self.a_He, b=self.b_He) # [s^-1]

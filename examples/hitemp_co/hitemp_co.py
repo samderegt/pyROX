@@ -1,7 +1,6 @@
 import numpy as np
 
 database = 'hitemp'
-
 species  = 'co'
 mass = 28.01
 isotope_idx = 1 # !! HITEMP specific !! .par-file includes all isotopologues
@@ -57,7 +56,6 @@ global_cutoff = 1e-45
 
 pRT3_metadata = dict(
     DOI = '10.1088/0067-0049/216/1/15', # DOI of the data
-    mol_mass = mass, 
     mol_name = 'CO',
     isotopologue_id = {'C':12, 'O':16}, 
 )
