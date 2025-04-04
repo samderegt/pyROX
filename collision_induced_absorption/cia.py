@@ -171,15 +171,6 @@ class CIA(CrossSections):
 
         plt.savefig(self.output_data_dir / 'cia_coeffs.pdf', bbox_inches='tight')
         plt.close()
-
-    def convert_to_pRT2(self):
-        """
-        Convert the CIA data to petitRADTRANS v2.0 format.
-
-        Raises:
-        NotImplementedError: If the method is not implemented.
-        """
-        raise NotImplementedError('Conversion to petitRADTRANS-v2.0 format is not implemented.')
     
     def convert_to_pRT3(self, contributor=None, **kwargs):
         """

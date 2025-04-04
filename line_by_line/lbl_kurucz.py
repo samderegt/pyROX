@@ -241,10 +241,10 @@ class Kurucz(LineByLine):
         P (float): Pressure in Pa.
         T (float): Temperature in Kelvin.
         E_low (array): Lower state energies in Joules.
-        nu_0 (array): Transition frequencies in Hz.
+        nu_0 (array): Transition frequencies in s^-1.
 
         Returns:
-        array: Van der Waals broadening in Hz.
+        array: Van der Waals broadening in s^-1.
         """
         # Get number density from equation-of-state or ideal-gas
         number_density = self.calculate_number_density(P, T) # [m^-3]
@@ -299,7 +299,7 @@ class Kurucz(LineByLine):
         A (float): Einstein A-coefficient in s^-1.
 
         Returns:
-        float: Natural broadening in Hz.
+        float: Natural broadening in s^-1.
         """
         # Natural broadening from Einstein A-coefficient
         gamma_N = super().compute_natural_broadening(A)
@@ -316,7 +316,7 @@ class Kurucz(LineByLine):
         Parameters:
         P (float): Pressure in Pa.
         T (float): Temperature in Kelvin.
-        nu_0 (array): Transition frequencies in Hz.
+        nu_0 (array): Transition frequencies in s^-1.
         delta (float, optional): Pressure shift coefficient.
 
         Returns:
@@ -336,7 +336,7 @@ class Kurucz(LineByLine):
         Parameters:
         P (float): Pressure in Pa.
         T (float): Temperature in Kelvin.
-        nu_0 (array): Transition frequencies in Hz.
+        nu_0 (array): Transition frequencies in s^-1.
         gamma (array, optional): Line widths.
 
         Returns:
@@ -410,13 +410,14 @@ class Kurucz(LineByLine):
         ) # [s^-1/(molec. m^-2)]
 
         # Sort by wavenumber
-        idx = np.argsort(nu_0)
-        nu_0  = nu_0[idx]
-        E_low = E_low[idx]
-        S_0   = S_0[idx]
+        idx_sort = np.argsort(nu_0)
+        nu_0  = nu_0[idx_sort]
+        S_0   = S_0[idx_sort]
+        E_low = E_low[idx_sort]
+        A     = A[idx_sort]
 
-        self.gamma_vdW_in_table = gamma_vdW[idx]
-        self.gamma_N_in_table   = gamma_N[idx]
+        self.gamma_vdW_in_table = gamma_vdW[idx_sort]
+        self.gamma_N_in_table   = gamma_N[idx_sort]
 
         # Compute the cross-sections, looping over the PT-grid
         print(f'  Number of lines: {len(nu_0)}')

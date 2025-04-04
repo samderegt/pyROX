@@ -23,7 +23,7 @@ class LineProfileHelper:
         T (float): Temperature in Kelvin.
         S_0 (float): Line strength at reference temperature.
         E_low (float): Lower state energy in Joules.
-        nu_0 (float): Transition frequency in Hz.
+        nu_0 (float): Transition frequency in s^-1.
 
         Returns:
         float: Line strength in s^-1/(molecule m^-2).
@@ -60,7 +60,7 @@ class LineProfileHelper:
         Parameters:
         P (float): Pressure in Pa.
         T (float): Temperature in Kelvin.
-        nu_0 (array): Transition frequencies in Hz.
+        nu_0 (array): Transition frequencies in s^-1.
         delta (float, optional): Pressure shift coefficient.
 
         Returns:
@@ -83,7 +83,7 @@ class LineProfileHelper:
         **kwargs: Additional parameters.
 
         Returns:
-        float: Van der Waals broadening in Hz.
+        float: Van der Waals broadening in s^-1.
         """
         # Van der Waals broadening
         gamma_vdW = np.zeros_like(E_low)
@@ -106,7 +106,7 @@ class LineProfileHelper:
         A (float): Einstein A-coefficient in s^-1.
 
         Returns:
-        float: Natural broadening in Hz.
+        float: Natural broadening in s^-1.
         """
         return A / (4*np.pi) # [s^-1]
 
@@ -116,10 +116,10 @@ class LineProfileHelper:
 
         Parameters:
         T (float): Temperature in Kelvin.
-        nu_0 (float): Transition frequency in Hz.
+        nu_0 (float): Transition frequency in s^-1.
 
         Returns:
-        float: Doppler broadening in Hz.
+        float: Doppler broadening in s^-1.
         """
         return np.sqrt(2*sc.k*T/self.mass) * nu_0/sc.c # [s^-1]
 
@@ -128,11 +128,11 @@ class LineProfileHelper:
         Calculate Lorentzian width.
 
         Parameters:
-        gamma_vdW (float): Van der Waals broadening in Hz.
-        gamma_N (float): Natural broadening in Hz.
+        gamma_vdW (float): Van der Waals broadening in s^-1.
+        gamma_N (float): Natural broadening in s^-1.
 
         Returns:
-        float: Lorentzian width in Hz.
+        float: Lorentzian width in s^-1.
         """
         return gamma_vdW + gamma_N # [s^-1]
 
@@ -141,11 +141,11 @@ class LineProfileHelper:
         Calculate Voigt width.
 
         Parameters:
-        gamma_G (float): Gaussian width in Hz.
-        gamma_L (float): Lorentzian width in Hz.
+        gamma_G (float): Gaussian width in s^-1.
+        gamma_L (float): Lorentzian width in s^-1.
 
         Returns:
-        float: Voigt width in Hz.
+        float: Voigt width in s^-1.
         """
         return 0.5346*gamma_L+np.sqrt(0.2166*gamma_L**2 + gamma_G**2) # [s^-1]
 
@@ -156,7 +156,7 @@ class LineProfileHelper:
 
         Parameters:
         S (array): Line strengths.
-        nu_0 (array): Transition frequencies in Hz.
+        nu_0 (array): Transition frequencies in s^-1.
         factor (float): Fraction of cumulative strength to retain.
 
         Returns:
@@ -213,13 +213,13 @@ class LineProfileHelper:
         Calculate line profiles in chunks to optimize speed.
 
         Parameters:
-        nu_0 (array): Transition frequencies in Hz.
+        nu_0 (array): Transition frequencies in s^-1.
         S (array): Line strengths.
         gamma_L (array): Lorentzian widths.
         gamma_G (array): Gaussian widths.
         nu_grid (array): Wavenumber grid.
-        delta_nu (float): Grid spacing in Hz.
-        wing_cutoff_distance (float): Wing cutoff distance in Hz.
+        delta_nu (float): Grid spacing in s^-1.
+        wing_cutoff_distance (float): Wing cutoff distance in s^-1.
         N_lines_in_chunk (int): Number of lines to process in each chunk.
 
         Returns:
@@ -560,7 +560,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         Parameters:
         P (float): Pressure in Pa.
         T (float): Temperature in Kelvin.
-        nu_0 (array): Transition frequencies in Hz.
+        nu_0 (array): Transition frequencies in s^-1.
         S_0 (array): Line strengths at reference temperature.
         E_low (array): Lower state energies in Joules.
         A (array): Einstein A-coefficients in s^-1.
@@ -571,13 +571,8 @@ class LineByLine(CrossSections, LineProfileHelper):
         # Get the line-widths
         gamma_N   = self.compute_natural_broadening(A) # Lorentzian components
         gamma_vdW = self.compute_vdw_broadening(P, T, E_low=E_low, nu_0=nu_0)
-        #gamma_vdW /= (4*np.pi)
         gamma_L   = self.compute_lorentz_width(gamma_vdW, gamma_N)
         gamma_G   = self.compute_doppler_broadening(T, nu_0) # Gaussian component
-
-        print(gamma_vdW)
-        print(gamma_N)
-        print(gamma_G)
 
         for nu_0_i in self.nu_0_to_ignore:
             # Ignore lines with a wavenumber close to the one to ignore
@@ -777,15 +772,6 @@ class LineByLine(CrossSections, LineProfileHelper):
         plt.savefig(self.output_data_dir / 'xsec.pdf', bbox_inches='tight')
         plt.close()
 
-    def convert_to_pRT2(self):
-        """
-        Convert the cross-sections to petitRADTRANS v2.0 format.
-
-        Raises:
-        NotImplementedError: If the method is not implemented.
-        """
-        raise NotImplementedError('Conversion to petitRADTRANS-v2.0 format not implemented.')
-
     def convert_to_pRT3(self, contributor=None, **kwargs):
         """
         Convert the cross-sections to petitRADTRANS v3.0 format.
@@ -807,8 +793,14 @@ class LineByLine(CrossSections, LineProfileHelper):
 
         # Check if required keys are in pRT3_metadata
         for key in ['DOI', 'mol_mass', 'mol_name', 'isotopologue_id']:
-            if key not in pRT3_metadata:
-                raise KeyError(f"Required key '{key}' not found in pRT3_metadata.")
+            if key in pRT3_metadata:
+                continue
+            if key == 'mol_mass':
+                # If mass is not given (for atoms)
+                pRT3_metadata[key] = self.mass / sc.amu
+                continue
+            # Key not given
+            raise KeyError(f"Required key '{key}' not found in pRT3_metadata.")
 
         data = {
             'DOI': np.atleast_1d(pRT3_metadata['DOI']),
@@ -854,7 +846,7 @@ class LineByLine(CrossSections, LineProfileHelper):
 
         wave_min = max(self.combined_datasets['wave'].min(), pRT_wave.min()) / sc.micron # [m] -> [um]
         wave_max = min(self.combined_datasets['wave'].max(), pRT_wave.max()) / sc.micron
-        mask_wave = (pRT_wave>=wave_min) & (pRT_wave<=wave_max)
+        mask_wave = (pRT_wave>=wave_min*sc.micron) & (pRT_wave<=wave_max*sc.micron)
         xsec = xsec[:,:,mask_wave] # Crop to the range of valid wavelengths
         pRT_wave = pRT_wave[mask_wave]
 
@@ -873,9 +865,14 @@ class LineByLine(CrossSections, LineProfileHelper):
             f'{mass_number}{element}' for element, mass_number in \
             pRT3_metadata['isotopologue_id'].items()
             ])
+        
+        linelist = pRT3_metadata.get('linelist', self.database.capitalize())
+        if linelist in ['Hitran', 'HITEMP']:
+            linelist = linelist.upper()
+
         pRT_file = '{}__{}.R{:.0e}_{:.1f}-{:.1f}mu.xsec.petitRADTRANS.h5'
         pRT_file = pRT_file.format(
-            isotopologue_id, self.database.upper(), resolution, wave_min, wave_max
+            isotopologue_id, linelist, resolution, wave_min, wave_max
         )
         pRT_file = self.output_data_dir / pRT_file
 
@@ -889,33 +886,31 @@ class LineByLine(CrossSections, LineProfileHelper):
         import matplotlib.pyplot as plt
         import h5py
 
-        with h5py.File('/net/lem/data2/regt/pyROX/examples/hitemp_co/12C-16O__HITEMP.R1e+06_0.1-250.0mu.xsec.petitRADTRANS.h5', 'r') as f:
-            for key in f.keys():
-                print(key, f[key][:])
+        fig, ax = plt.subplots(figsize=(12,6))
+        with h5py.File('/net/schenk/data2/regt/pRT3_input_data/input_data/opacities/lines/line_by_line/K/39K/39K__Kurucz.R1e+06_0.3-28.0mu.xsec.petitRADTRANS.h5', 'r') as f:
+            idx_T, T = utils.find_closest_indices(f['t'][:], 3000.)
+            idx_P, P = utils.find_closest_indices(f['p'][:], 1e5)
 
-        print()
-        with h5py.File(pRT_file, 'r') as f:
-            for key in f.keys():
-                # print(f'  {key}: {f[key].shape}')
-                # print(dict(f[key].attrs))
-                print(key, f[key][:])
-        return
+            ax.plot(1e4/f['bin_edges'][:], 1/(self.mass*1e-3)*f['xsecarr'][idx_P,idx_T,:], label=f'T={T:.0f} K, P={P:.0e} bar', lw=1, alpha=0.7)
 
-        fig, ax = plt.subplots(figsize=(12,5))
-        with h5py.File('/net/schenk/data2/regt/pRT3_input_data/input_data/opacities/lines/line_by_line/CO/12C-16O/12C-16O__HITEMP.R1e+06_0.3-28.0mu.xsec.petitRADTRANS.h5', 'r') as f:
-            idx_T, T = utils.find_closest_indices(f['t'][:], 2000.)
-            idx_P, P = utils.find_closest_indices(f['p'][:], 1e-5)
+        with h5py.File('/net/lem/data2/regt/pyROX/examples/kurucz_k/39K__LorCut.R1e6_0.3-28mu.xsec.petitRADTRANS.h5', 'r') as f:
+            idx_T, T = utils.find_closest_indices(f['t'][:], 3000.)
+            idx_P, P = utils.find_closest_indices(f['p'][:], 1e5)
 
-            ax.plot(1e4/f['bin_edges'][:], f['xsecarr'][idx_P,idx_T,:], label=f'T={T:.0f} K, P={P:.0e} bar', lw=1, alpha=0.7)
+            ax.plot(1e4/f['bin_edges'][:], 1/(self.mass*1e-3)*f['xsecarr'][idx_P,idx_T,:], label=f'T={T:.0f} K, P={P:.0e} bar', lw=1, alpha=0.7)
 
         with h5py.File(pRT_file, 'r') as f:
-            idx_T, T = utils.find_closest_indices(f['t'][:], 2000.)
-            idx_P, P = utils.find_closest_indices(f['p'][:], 1e-5)
+            idx_T, T = utils.find_closest_indices(f['t'][:], 3000.)
+            idx_P, P = utils.find_closest_indices(f['p'][:], 1e5)
 
-            ax.plot(1e4/f['bin_edges'][:], f['xsecarr'][idx_P,idx_T,:], label=f'T={T:.0f} K, P={P:.0e} bar', lw=1, alpha=0.7)
-
+            ax.plot(1e4/f['bin_edges'][:], 1/(self.mass*1e-3)*f['xsecarr'][idx_P,idx_T,:], label=f'T={T:.0f} K, P={P:.0e} bar', lw=1, alpha=0.7)
+            
         ax.legend(loc='lower right')
-        ax.set(xscale='log', yscale='log', xlabel='wavelength [um]', ylabel='xsec [cm^2 molecule^-1]')
-        ax.set_ylim(1e-45)
+        #ax.set(xscale='log', yscale='log', xlabel='wavelength [um]', ylabel='xsec [cm^2 molecule^-1]')
+        ax.set(xscale='log', yscale='log', xlabel='wavelength [um]', ylabel='xsec [cm^2 g^-1]')
+        #ax.set_ylim(1e-45)
+        ax.set_ylim(1e-3, 1e20)
+        #ax.set_xlim(0.766, 0.768); ax.set_xscale('linear')
+        ax.set_xlim(0.3, 2.5); ax.set_xscale('linear')
         plt.savefig(self.output_data_dir / 'xsec_pRT3.pdf', bbox_inches='tight')
         plt.close()

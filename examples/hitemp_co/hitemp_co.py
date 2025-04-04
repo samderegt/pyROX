@@ -6,7 +6,6 @@ species  = 'co'
 mass = 28.01
 isotope_idx = 1 # !! HITEMP specific !! .par-file includes all isotopologues
 isotope_abundance = 9.86544e-1
-#isotopologue_id = {'C':12, 'O':16}
 
 # Instructions to download from HITRAN/HITEMP database
 urls = [
@@ -40,10 +39,8 @@ perturber_info = dict(
         ), 
 )
 
-# P_grid = np.logspace(-5,2,8) # [bar]
-# T_grid = np.array([1000,2000]) # [K]
-P_grid = np.array([1e-5]) # [bar]
-T_grid = np.array([2000.]) # [K]
+P_grid = np.logspace(-5,2,8) # [bar]
+T_grid = np.array([500,1000,2000,3000])   # [K]
 
 wave_min = 1.0/3.0; wave_max = 50.0 # [um]
 delta_nu = 0.01 # [cm^-1]

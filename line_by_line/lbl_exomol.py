@@ -258,12 +258,14 @@ class ExoMol(LineByLine):
                     ) # [s^-1/(molec. m^-2)]
 
                     # Sort by wavenumber
-                    idx = np.argsort(nu_0)
-                    nu_0 = nu_0[idx]
-                    S_0 = S_0[idx]
-                    E_low = E_low[idx]
-                    J_l = J_l[idx]
-                    J_u = J_u[idx]
+                    idx_sort = np.argsort(nu_0)
+                    nu_0  = nu_0[idx_sort]
+                    S_0   = S_0[idx_sort]
+                    E_low = E_low[idx_sort]
+                    A     = A[idx_sort]
+
+                    J_l = J_l[idx_sort]
+                    J_u = J_u[idx_sort]
                     
                     # Get J-specific broadening parameters
                     self._read_broadening_per_transition(J_l, J_u)

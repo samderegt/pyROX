@@ -29,9 +29,6 @@ if __name__ == '__main__':
         )
 
     parser.add_argument(
-        '--convert_to_pRT2', action='store_true', help='Convert to petitRADTRANS v2 format.'
-        )
-    parser.add_argument(
         '--convert_to_pRT3', action='store_true', help='Convert to petitRADTRANS v3 format.'
         )
 
@@ -95,8 +92,6 @@ if __name__ == '__main__':
             )
 
     # Optional conversions to petitRADTRANS format
-    if args.convert_to_pRT2:
-        data.convert_to_pRT2()
     if args.convert_to_pRT3:
         data.convert_to_pRT3()
 
