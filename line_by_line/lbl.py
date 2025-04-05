@@ -198,6 +198,85 @@ class LineProfileHelper:
 
         return S
 
+    def calculate_line_profiles_in_chunks_new(
+            self, 
+            nu_0, 
+            S, 
+            gamma_L, 
+            gamma_G, 
+            nu_grid, 
+            delta_nu, 
+            wing_cutoff_distance, 
+            N_lines_in_chunk=500,
+            ):
+        # Indices where lines should be inserted
+        idx_to_insert = np.searchsorted(nu_grid, nu_0) - 1
+
+        N_nu_grid = len(nu_grid)
+        #N_nu_line = nu_line.shape[1]
+
+        # Relative width of Lorentzian vs. Gaussian
+        a = gamma_L / gamma_G # Gandhi et al. (2020)
+
+        # Only consider number of lines at a time
+        N_chunks = int(np.ceil(len(S)/N_lines_in_chunk))
+
+        sigma = np.zeros_like(nu_grid)
+        for ch in tqdm(range(N_chunks)):
+
+            # Upper and lower indices of lines in current chunk
+            idx_chunk_l = int(ch*N_lines_in_chunk)
+            idx_chunk_h = idx_chunk_l + N_lines_in_chunk
+            idx_chunk_h = np.minimum(idx_chunk_h, len(S)) # At last chunk
+
+            # Lines in current chunk
+            nu_0_chunk    = nu_0[idx_chunk_l:idx_chunk_h]
+            gamma_G_chunk = gamma_G[idx_chunk_l:idx_chunk_h]
+            a_chunk = a[idx_chunk_l:idx_chunk_h]
+            S_chunk = S[idx_chunk_l:idx_chunk_h] # [s^-1/(molecule m^-2)]
+
+            # Indices of wing cutoff
+            idx_sigma_l = np.searchsorted(nu_grid, nu_0_chunk-wing_cutoff_distance) - 1
+            idx_sigma_l = np.maximum(0, idx_sigma_l)
+
+            idx_sigma_h = np.searchsorted(nu_grid, nu_0_chunk+wing_cutoff_distance) + 1
+            idx_sigma_h = np.minimum(N_nu_grid, idx_sigma_h)
+
+            x = []
+            u_len = []
+            for i, (idx_l, idx_h) in enumerate(zip(idx_sigma_l, idx_sigma_h)):
+                u_i = (nu_grid[idx_l:idx_h] - nu_0_chunk[i]) / gamma_G_chunk[i]
+                x.append(u_i+a_chunk[i]*1j)
+                u_len.append(len(u_i))
+               
+            x = np.concatenate(x) # Collapse into a 1D array
+            u_indices = np.cumsum(u_len) # Indices to separate back into lines
+
+            # Faddeeva function on multiple lines at once
+            profile = np.real(wofz(x))
+
+            for i, (idx_l, idx_h) in enumerate(zip(idx_sigma_l, idx_sigma_h)):
+                
+                idx_line_l = 0 if i==0 else u_indices[i-1]
+                idx_line_h = u_indices[i]
+
+                # Add line to total cross-section
+                sigma[idx_l:idx_h] += S_chunk[i] * profile[idx_line_l:idx_line_h] / (gamma_G_chunk[i]*np.sqrt(np.pi))
+
+                import matplotlib.pyplot as plt
+                plt.plot(nu_grid[idx_sigma_l[i]:idx_sigma_h[i]], sigma[idx_sigma_l[i]:idx_sigma_h[i]])
+                plt.axvline(nu_0_chunk[i], color='r', linestyle='--')
+                #plt.axvline(nu_grid_chunk[i], color='g', linestyle='--')
+
+                if i == 0:
+                    plt.xlim(nu_0_chunk[i]-wing_cutoff_distance/100, nu_0_chunk[i]+wing_cutoff_distance/100)
+                    plt.yscale('log')
+                    plt.savefig(self.output_data_dir / 'test.pdf')
+                    plt.close()
+                    exit()
+            
+        return sigma
+
     def calculate_line_profiles_in_chunks(
             self, 
             nu_0, 
@@ -207,7 +286,7 @@ class LineProfileHelper:
             nu_grid, 
             delta_nu, 
             wing_cutoff_distance, 
-            N_lines_in_chunk=200, 
+            N_lines_in_chunk=500, 
             ):
         """
         Calculate line profiles in chunks to optimize speed.
@@ -247,7 +326,7 @@ class LineProfileHelper:
         N_chunks = int(np.ceil(len(S)/N_lines_in_chunk))
 
         sigma = np.zeros_like(nu_grid)
-        for ch in range(N_chunks):
+        for ch in tqdm(range(N_chunks)):
             
             # Upper and lower indices of lines in current chunk
             idx_chunk_l = int(ch*N_lines_in_chunk)
@@ -284,7 +363,7 @@ class LineProfileHelper:
             for i, sigma_i in enumerate(sigma_chunk):
                 # Add line to total cross-section
                 sigma[idx_sigma_l[i]:idx_sigma_h[i]] += sigma_i[idx_sigma_chunk_l[i]:idx_sigma_chunk_h[i]]
-                
+            
         return sigma
     
 class LineByLine(CrossSections, LineProfileHelper):
@@ -617,6 +696,28 @@ class LineByLine(CrossSections, LineProfileHelper):
             delta_nu=delta_nu_to_use, 
             wing_cutoff_distance=wing_cutoff_distance, 
         )
+        print()
+
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(12,8), nrows=2, sharex=True)
+        ax[0].plot(1e6*sc.c/nu_grid_to_use, sigma)
+
+        sigma_new = self.calculate_line_profiles_in_chunks_new(
+            nu_0=nu_0, 
+            S=S, 
+            gamma_L=gamma_L, 
+            gamma_G=gamma_G, 
+            nu_grid=nu_grid_to_use, 
+            delta_nu=delta_nu_to_use, 
+            wing_cutoff_distance=wing_cutoff_distance, 
+        )
+        ax[0].plot(1e6*sc.c/nu_grid_to_use, sigma_new, ls='--')
+        ax[1].plot(1e6*sc.c/nu_grid_to_use, (sigma-sigma_new)/sigma_new)
+        ax[1].set(xlabel='Wavelength [um]', ylim=(-1e-6,1e-6))
+        ax[0].set(xlim=(1,1.001), yscale='log')
+        plt.savefig(self.output_data_dir / 'test.pdf')
+        plt.close()
+
         if len(nu_grid_to_use) != len(self.nu_grid):
             # Interpolate to the original grid
             sigma = np.interp(self.nu_grid, nu_grid_to_use, sigma)

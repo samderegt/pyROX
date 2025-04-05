@@ -367,12 +367,14 @@ class CrossSections:
         # Wavenumber/wavelength grid
         self.wave_min = getattr(self.config, 'wave_min', 1.0/3.0) # [um]
         self.wave_max = getattr(self.config, 'wave_max', 250.0)
-        self.delta_nu = getattr(self.config, 'delta_nu', 0.01)    # [cm^-1]
+        self.delta_nu = getattr(self.config, 'delta_nu', np.nan) # [cm^-1]
+        self.delta_wave = getattr(self.config, 'delta_wave', np.nan) # [um]
         
         # Convert to SI units
         self.wave_min *= sc.micron # [um] -> [m]
         self.wave_max *= sc.micron
         self.delta_nu *= 1e2*sc.c # Change to frequency [cm^-1] -> [s^-1]
+        self.delta_wave *= sc.micron # [um] -> [m]
         
         # Input/output directories
         self.input_data_dir = getattr(self.config, 'input_data_dir', f'./{self.species}/input_data/')
@@ -412,19 +414,44 @@ class CrossSections:
         self.nu_min = sc.c/self.wave_max # [m] -> [s^-1]
         self.nu_max = sc.c/self.wave_min # [m] -> [s^-1]
 
-        # Number of grid points
-        self.N_nu = int((self.nu_max-self.nu_min)/self.delta_nu) + 1
+        if not np.isnan(self.delta_nu):
+            # Number of grid points
+            self.N_nu = int((self.nu_max-self.nu_min)/self.delta_nu) + 1
 
-        # Not exact value of delta_nu given above, but done to keep final lambda values fixed
-        self.delta_nu = (self.nu_max-self.nu_min) / (self.N_nu-1)
-        self.nu_grid  = np.linspace(self.nu_min, self.nu_max, num=self.N_nu, endpoint=True)
+            # Not exact value of delta_nu given above, but done to keep final lambda values fixed
+            self.delta_nu = (self.nu_max-self.nu_min) / (self.N_nu-1)
+            self.nu_grid  = np.linspace(self.nu_min, self.nu_max, num=self.N_nu, endpoint=True)
+            
+            self.wave_grid = sc.c/self.nu_grid # [s^-1] -> [m]
         
-        self.wave_grid = sc.c/self.nu_grid # [s^-1] -> [m]
+        elif not np.isnan(self.delta_wave):
+            # Number of grid points
+            self.N_nu = int((self.wave_max-self.wave_min)/self.delta_wave) + 1
+
+            # Not exact value of delta_wave given above, but done to keep final nu values fixed
+            self.delta_wave = (self.wave_max-self.wave_min) / (self.N_nu-1)
+            self.wave_grid  = np.linspace(self.wave_min, self.wave_max, num=self.N_nu, endpoint=True)
+            self.wave_grid  = self.wave_grid[::-1] # Reverse the order of the grid
+
+            self.nu_grid = sc.c/self.wave_grid # [m] -> [s^-1]
+
+        else:
+            self.wave_grid = utils.prt_resolving_space(
+                self.wave_min, self.wave_max, resolving_power=1e6
+                ) # [m]
+            self.wave_grid = self.wave_grid[::-1] # Reverse the order of the grid
+            self.N_nu = len(self.wave_grid)
+            self.nu_grid = sc.c/self.wave_grid # [m] -> [s^-1]
+
+            #raise ValueError('No grid resolution specified in the configuration.')
 
         print('\nWavelength-grid:')
         print(f'  Wavelength: {self.wave_min/sc.micron:.2f} - {self.wave_max/sc.micron:.0f} um')
         print(f'  Wavenumber: {self.nu_min/(1e2*sc.c):.0f} - {self.nu_max/(1e2*sc.c):.0f} cm^-1')
-        print(f'  Delta nu:   {self.delta_nu/(1e2*sc.c):.3f} cm^-1')
+        if not np.isnan(self.delta_nu):
+            print(f'  Delta nu:   {self.delta_nu/(1e2*sc.c):.3f} cm^-1')
+        elif not np.isnan(self.delta_wave):
+            print(f'  Delta wave: {self.delta_wave/sc.micron:.3f} um')
         print(f'  Number of grid points: {self.N_nu}')
 
         adaptive_nu_grid = getattr(self, 'adaptive_nu_grid', False)
