@@ -1,7 +1,10 @@
-logs/
-input_data/HITEMP/
-input_data/ExoMol/
-input_data/wlen_petitRADTRANS.dat
-input/*/
-cross_sec_outputs/
 __pycache__/
+
+examples/*/input_data/
+examples/*/tmp/
+examples/*/*.pdf
+examples/*/*.h5
+examples/*/*.hdf5
+
+convert_all.ipynb
+*.code-workspace
