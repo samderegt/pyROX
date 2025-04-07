@@ -6,5 +6,7 @@ examples/*/*.pdf
 examples/*/*.h5
 examples/*/*.hdf5
 
+docs/build/
+
 convert_all.ipynb
 *.code-workspace
