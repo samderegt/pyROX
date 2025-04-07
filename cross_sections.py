@@ -74,9 +74,6 @@ class CrossSections:
         # Read the common variables
         self._read_configuration_parameters(config)
 
-        # Get the wavenumber grid
-        self._setup_nu_grid()
-
     def download_data(self, *args, **kwargs):
         """
         Download data required for cross-section calculations.
@@ -365,16 +362,7 @@ class CrossSections:
         self.species  = getattr(self.config, 'species', None)
 
         # Wavenumber/wavelength grid
-        self.wave_min = getattr(self.config, 'wave_min', 1.0/3.0) # [um]
-        self.wave_max = getattr(self.config, 'wave_max', 250.0)
-        self.delta_nu = getattr(self.config, 'delta_nu', np.nan) # [cm^-1]
-        self.delta_wave = getattr(self.config, 'delta_wave', np.nan) # [um]
-        
-        # Convert to SI units
-        self.wave_min *= sc.micron # [um] -> [m]
-        self.wave_max *= sc.micron
-        self.delta_nu *= 1e2*sc.c # Change to frequency [cm^-1] -> [s^-1]
-        self.delta_wave *= sc.micron # [um] -> [m]
+        self._setup_nu_grid()
         
         # Input/output directories
         self.input_data_dir = getattr(self.config, 'input_data_dir', f'./{self.species}/input_data/')
@@ -411,51 +399,83 @@ class CrossSections:
         """
         Configure the wavenumber grid based on the configuration parameters.
         """
+        # Read the necessary parameters
+        self.wave_file = getattr(self.config, 'wave_file', '')
+        self.wave_file = pathlib.Path(self.wave_file).resolve()
+
+        self.resolution = getattr(self.config, 'resolution', np.nan)
+
+        self.delta_nu   = getattr(self.config, 'delta_nu', np.nan) # [cm^-1]
+        self.delta_nu   = self.delta_nu * 1e2*sc.c # [s^-1]
+        self.delta_wave = getattr(self.config, 'self.delta_wave', np.nan) # [um]
+        self.delta_wave = self.delta_wave * sc.micron # [um] -> [m]
+        
+        self.wave_min = getattr(self.config, 'wave_min', 1.0/3.0) # [um]
+        self.wave_min = self.wave_min * sc.micron # [um] -> [m]
+        self.wave_max = getattr(self.config, 'wave_max', 250.0) # [um]
+        self.wave_max = self.wave_max * sc.micron # [um] -> [m]
+
         self.nu_min = sc.c/self.wave_max # [m] -> [s^-1]
         self.nu_max = sc.c/self.wave_min # [m] -> [s^-1]
 
-        if not np.isnan(self.delta_nu):
-            # Number of grid points
+        self.adaptive_nu_grid = False
+        if self.wave_file.is_file():
+            # Use a custom wavelength grid from a file
+            self.wave_file = pathlib.Path(self.wave_file).resolve()
+            self.wave_grid = np.loadtxt(self.wave_file)
+
+        elif not np.isnan(self.resolution):
+            # Use a fixed resolution
+            self.wave_grid = utils.fixed_resolution_wavelength_grid(
+                self.wave_min, self.wave_max, resolution=self.resolution
+                ) # [m]
+
+        elif not np.isnan(self.delta_nu):
+            # Use an equal wavenumber-spacing
             self.N_nu = int((self.nu_max-self.nu_min)/self.delta_nu) + 1
-
-            # Not exact value of delta_nu given above, but done to keep final lambda values fixed
             self.delta_nu = (self.nu_max-self.nu_min) / (self.N_nu-1)
-            self.nu_grid  = np.linspace(self.nu_min, self.nu_max, num=self.N_nu, endpoint=True)
             
+            self.nu_grid   = np.linspace(self.nu_min, self.nu_max, num=self.N_nu, endpoint=True)
             self.wave_grid = sc.c/self.nu_grid # [s^-1] -> [m]
-        
+
+            # Decrease the wavenumber-grid resolution for high pressures
+            self.adaptive_nu_grid = getattr(self.config, 'adaptive_nu_grid', False)
+
         elif not np.isnan(self.delta_wave):
-            # Number of grid points
-            self.N_nu = int((self.wave_max-self.wave_min)/self.delta_wave) + 1
-
-            # Not exact value of delta_wave given above, but done to keep final nu values fixed
+            # Use an equal wavelength-spacing
+            self.N_nu  = int((self.wave_max-self.wave_min)/self.delta_wave) + 1
             self.delta_wave = (self.wave_max-self.wave_min) / (self.N_nu-1)
-            self.wave_grid  = np.linspace(self.wave_min, self.wave_max, num=self.N_nu, endpoint=True)
-            self.wave_grid  = self.wave_grid[::-1] # Reverse the order of the grid
-
-            self.nu_grid = sc.c/self.wave_grid # [m] -> [s^-1]
+            
+            self.wave_grid = np.linspace(self.wave_min, self.wave_max, num=self.N_nu, endpoint=True)
 
         else:
-            self.wave_grid = utils.prt_resolving_space(
-                self.wave_min, self.wave_max, resolving_power=1e6
-                ) # [m]
-            self.wave_grid = self.wave_grid[::-1] # Reverse the order of the grid
-            self.N_nu = len(self.wave_grid)
-            self.nu_grid = sc.c/self.wave_grid # [m] -> [s^-1]
+            raise ValueError('No wavelength/wavenumber grid can be made with the configuration parameters.')
 
-            #raise ValueError('No grid resolution specified in the configuration.')
+        self.nu_grid = sc.c/self.wave_grid # [m] -> [s^-1]
+
+        self.wave_min = np.min(self.wave_grid)
+        self.wave_max = np.max(self.wave_grid)
+        self.nu_min   = np.min(self.nu_grid)
+        self.nu_max   = np.max(self.nu_grid)
+        self.N_nu = len(self.wave_grid)
+
+        # Sort by wavenumber
+        idx = np.argsort(self.nu_grid) 
+        self.wave_grid = self.wave_grid[idx]
+        self.nu_grid   = self.nu_grid[idx]
 
         print('\nWavelength-grid:')
         print(f'  Wavelength: {self.wave_min/sc.micron:.2f} - {self.wave_max/sc.micron:.0f} um')
         print(f'  Wavenumber: {self.nu_min/(1e2*sc.c):.0f} - {self.nu_max/(1e2*sc.c):.0f} cm^-1')
-        if not np.isnan(self.delta_nu):
-            print(f'  Delta nu:   {self.delta_nu/(1e2*sc.c):.3f} cm^-1')
+        if not np.isnan(self.resolution):
+            print(f'  Fixed resolution: {self.resolution:.0e}')
+        elif not np.isnan(self.delta_nu):
+            print(f'  Fixed wavenumber-spacing: {self.delta_nu/(1e2*sc.c):.3f} cm^-1')
         elif not np.isnan(self.delta_wave):
-            print(f'  Delta wave: {self.delta_wave/sc.micron:.3f} um')
+            print(f'  Fixed wavelength-spacing: {self.delta_wave/sc.micron:.3f} um')
         print(f'  Number of grid points: {self.N_nu}')
 
-        adaptive_nu_grid = getattr(self, 'adaptive_nu_grid', False)
-        print(f'  Adaptive grid: {adaptive_nu_grid}')
+        print(f'  Adaptive grid: {self.adaptive_nu_grid}')
 
     def _setup_coarse_nu_grid(self, adaptive_delta_nu):
         """
@@ -465,13 +485,13 @@ class CrossSections:
         adaptive_delta_nu (float): Desired resolution for the coarse grid.
 
         Returns:
-        tuple: Coarse wavenumber grid and its resolution.
+        numpy.ndarray: Coarse wavenumber grid.
         """
         # Use the original grid
         if not self.adaptive_nu_grid:
-            return self.nu_grid, self.delta_nu
+            return self.nu_grid
         if self.delta_nu > adaptive_delta_nu:
-            return self.nu_grid, self.delta_nu
+            return self.nu_grid
         
         # Decrease number of points in wavenumber grid
         inflation_factor = adaptive_delta_nu / self.delta_nu
@@ -485,4 +505,4 @@ class CrossSections:
         )
         coarse_delta_nu = coarse_nu_grid[1] - coarse_nu_grid[0]
 
-        return coarse_nu_grid, coarse_delta_nu
+        return coarse_nu_grid

@@ -37,12 +37,15 @@ perturber_info = dict(
 P_grid = 10**np.array([-5.,-1.]) # [bar]
 T_grid = np.array([2000,3000])   # [K]
 
-wave_min = 1.0/3.0; wave_max = 50.0 # [um]
-delta_nu = 0.01 # [cm^-1]
+#wave_min = 1.0/3.0; wave_max = 50.0 # [um]
+wave_min = 0.3; wave_max = 28.0 # [um]
+#delta_nu = 0.01 # [cm^-1]
 #delta_wave = 1e-6 # [um]
+resolution = 1e6
 
 # Switch to sparser wavenumber grid for high broadening?
-adaptive_nu_grid = True
+#adaptive_nu_grid = True
+adaptive_nu_grid = False
 
 # Line-strength cutoffs
 local_cutoff  = 0.25

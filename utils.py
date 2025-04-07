@@ -200,9 +200,10 @@ def warn_about_units(config):
         'T_grid': 'K',
         'wave_min': 'um',
         'wave_max': 'um',
+        'delta_wave': 'um',
         'delta_nu': 'cm^-1',
+        'wave_file': 'um',
         'wing_cutoff': 'cm^-1',
-        #'local_cutoff': 'fraction',
         'global_cutoff': 'cm^1 molecule^-1',
     }
 
@@ -232,44 +233,35 @@ def find_closest_indices(a, b):
         idx = np.abs(a - b).argmin()
     return idx, a[idx]
 
-def prt_resolving_space(start, stop, resolving_power):
-    """Return numbers evenly spaced at the specified resolving power.
+def fixed_resolution_wavelength_grid(wave_min, wave_max, resolution):
+    """
+    Adopted from petitRADTRANS. 
+    Return a fixed resolution wavelength grid.
 
-    Args:
-        start:
-            The starting value of the sequence.
-        stop:
-            The end value of the sequence.
-        resolving_power:
-            Resolving power of the sample
+    Parameters:
+    wave_min (float): Minimum wavelength.
+    wave_max (float): Maximum wavelength.
+    resolution (float): Desired resolution.
 
     Returns:
-        Samples spaced following the specified resolving power.
-
+    numpy.ndarray: Wavelength grid.
     """
-    # Check for inputs validity
-    if start > stop:
-        raise ValueError(f"start ({start}) must be lower than stop {stop}")
-
-    if resolving_power <= 0:
-        raise ValueError(f"resolving power ({resolving_power}) must be strictly positive")
-
-    inverse_resolving_power = 1 / resolving_power
 
     # Get maximum space length (much higher than required)
-    size_max = int(np.ceil((stop - start) / (start / resolving_power)))
+    size_max = int(np.ceil((wave_max-wave_min) / (wave_min/resolution)))
 
     # Start generating space
-    samples = [start]
+    samples = [wave_min]
     i = 0
 
+    inverse_resolution = 1 / resolution
     for i in range(size_max):
-        samples.append(samples[-1] * np.exp(inverse_resolving_power))
+        samples.append(samples[-1] * np.exp(inverse_resolution))
 
-        if samples[-1] >= stop:
+        if samples[-1] >= wave_max:
             break
 
-    if i == size_max - 1 and samples[-1] < stop:
+    if i == size_max - 1 and samples[-1] < wave_max:
         raise ValueError(f"maximum size ({size_max}) reached before reaching stop ({samples[-1]} < {stop})")
 
     return np.array(samples)

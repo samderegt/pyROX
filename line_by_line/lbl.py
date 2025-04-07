@@ -165,13 +165,21 @@ class LineProfileHelper:
         if factor == 0.:
             return S
 
-        # Round to zero-th decimal
-        nu_bin = np.around((nu_0-self.nu_min)/self.delta_nu_local_cutoff).astype(int)
+        # Bin the lines to the nearest grid point
+        if not np.isnan(self.delta_nu):
+            # Equal wavenumber-spacing, use increased resolution
+            nu_bin = np.around((nu_0-self.nu_min)/self.delta_nu_local_cutoff).astype(int)
+
+        else:
+            # Other spacing, use native resolution
+            nu_bin = np.searchsorted(self.nu_grid[:-1]-np.diff(self.nu_grid)/2, nu_0)
+            nu_bin = np.maximum(nu_bin, 0) # First and last bin
+            nu_bin = np.minimum(nu_bin, len(self.nu_grid)-1)
 
         # Upper and lower indices of lines within bins
         _, nu_bin_idx = np.unique(nu_bin, return_index=True)
         nu_bin_idx    = np.append(nu_bin_idx, len(nu_bin))
-
+         
         for k in range(len(nu_bin_idx)-1):
             # All lines in this bin
             S_range = S[nu_bin_idx[k]:nu_bin_idx[k+1]]
@@ -198,85 +206,6 @@ class LineProfileHelper:
 
         return S
 
-    def calculate_line_profiles_in_chunks_new(
-            self, 
-            nu_0, 
-            S, 
-            gamma_L, 
-            gamma_G, 
-            nu_grid, 
-            delta_nu, 
-            wing_cutoff_distance, 
-            N_lines_in_chunk=500,
-            ):
-        # Indices where lines should be inserted
-        idx_to_insert = np.searchsorted(nu_grid, nu_0) - 1
-
-        N_nu_grid = len(nu_grid)
-        #N_nu_line = nu_line.shape[1]
-
-        # Relative width of Lorentzian vs. Gaussian
-        a = gamma_L / gamma_G # Gandhi et al. (2020)
-
-        # Only consider number of lines at a time
-        N_chunks = int(np.ceil(len(S)/N_lines_in_chunk))
-
-        sigma = np.zeros_like(nu_grid)
-        for ch in tqdm(range(N_chunks)):
-
-            # Upper and lower indices of lines in current chunk
-            idx_chunk_l = int(ch*N_lines_in_chunk)
-            idx_chunk_h = idx_chunk_l + N_lines_in_chunk
-            idx_chunk_h = np.minimum(idx_chunk_h, len(S)) # At last chunk
-
-            # Lines in current chunk
-            nu_0_chunk    = nu_0[idx_chunk_l:idx_chunk_h]
-            gamma_G_chunk = gamma_G[idx_chunk_l:idx_chunk_h]
-            a_chunk = a[idx_chunk_l:idx_chunk_h]
-            S_chunk = S[idx_chunk_l:idx_chunk_h] # [s^-1/(molecule m^-2)]
-
-            # Indices of wing cutoff
-            idx_sigma_l = np.searchsorted(nu_grid, nu_0_chunk-wing_cutoff_distance) - 1
-            idx_sigma_l = np.maximum(0, idx_sigma_l)
-
-            idx_sigma_h = np.searchsorted(nu_grid, nu_0_chunk+wing_cutoff_distance) + 1
-            idx_sigma_h = np.minimum(N_nu_grid, idx_sigma_h)
-
-            x = []
-            u_len = []
-            for i, (idx_l, idx_h) in enumerate(zip(idx_sigma_l, idx_sigma_h)):
-                u_i = (nu_grid[idx_l:idx_h] - nu_0_chunk[i]) / gamma_G_chunk[i]
-                x.append(u_i+a_chunk[i]*1j)
-                u_len.append(len(u_i))
-               
-            x = np.concatenate(x) # Collapse into a 1D array
-            u_indices = np.cumsum(u_len) # Indices to separate back into lines
-
-            # Faddeeva function on multiple lines at once
-            profile = np.real(wofz(x))
-
-            for i, (idx_l, idx_h) in enumerate(zip(idx_sigma_l, idx_sigma_h)):
-                
-                idx_line_l = 0 if i==0 else u_indices[i-1]
-                idx_line_h = u_indices[i]
-
-                # Add line to total cross-section
-                sigma[idx_l:idx_h] += S_chunk[i] * profile[idx_line_l:idx_line_h] / (gamma_G_chunk[i]*np.sqrt(np.pi))
-
-                import matplotlib.pyplot as plt
-                plt.plot(nu_grid[idx_sigma_l[i]:idx_sigma_h[i]], sigma[idx_sigma_l[i]:idx_sigma_h[i]])
-                plt.axvline(nu_0_chunk[i], color='r', linestyle='--')
-                #plt.axvline(nu_grid_chunk[i], color='g', linestyle='--')
-
-                if i == 0:
-                    plt.xlim(nu_0_chunk[i]-wing_cutoff_distance/100, nu_0_chunk[i]+wing_cutoff_distance/100)
-                    plt.yscale('log')
-                    plt.savefig(self.output_data_dir / 'test.pdf')
-                    plt.close()
-                    exit()
-            
-        return sigma
-
     def calculate_line_profiles_in_chunks(
             self, 
             nu_0, 
@@ -284,9 +213,8 @@ class LineProfileHelper:
             gamma_L, 
             gamma_G, 
             nu_grid, 
-            delta_nu, 
             wing_cutoff_distance, 
-            N_lines_in_chunk=500, 
+            N_lines_in_chunk=500,
             ):
         """
         Calculate line profiles in chunks to optimize speed.
@@ -297,74 +225,76 @@ class LineProfileHelper:
         gamma_L (array): Lorentzian widths.
         gamma_G (array): Gaussian widths.
         nu_grid (array): Wavenumber grid.
-        delta_nu (float): Grid spacing in s^-1.
         wing_cutoff_distance (float): Wing cutoff distance in s^-1.
         N_lines_in_chunk (int): Number of lines to process in each chunk.
 
         Returns:
-        array: Line profiles on the grid.
+        array: Opacity cross-section on the grid.
         """
         # Indices where lines should be inserted
         idx_to_insert = np.searchsorted(nu_grid, nu_0) - 1
-
-        # Wing-length in number of grid points
-        wing_length = int(np.around(wing_cutoff_distance/delta_nu))
-
-        # Array of wavenumbers from line-center
-        nu_line = np.linspace(
-            -wing_length*delta_nu, wing_length*delta_nu, 2*wing_length+1, endpoint=True
-            )
-        nu_line = nu_line[None,:]
-
-        N_nu_grid = len(nu_grid)
-        N_nu_line = nu_line.shape[1]
 
         # Relative width of Lorentzian vs. Gaussian
         a = gamma_L / gamma_G # Gandhi et al. (2020)
 
         # Only consider number of lines at a time
         N_chunks = int(np.ceil(len(S)/N_lines_in_chunk))
+        N_nu_grid = len(nu_grid)
+
+        # Left and right indices of the line profile within the grid
+        idx_nu_grid_l = np.searchsorted(nu_grid, nu_0-wing_cutoff_distance) - 1
+        idx_nu_grid_l = np.maximum(0, idx_nu_grid_l)
+        idx_nu_grid_h = np.searchsorted(nu_grid, nu_0+wing_cutoff_distance) + 1
+        idx_nu_grid_h = np.minimum(N_nu_grid, idx_nu_grid_h)
+        slice_nu_grid = [
+            slice(idx_nu_grid_l[i], idx_nu_grid_h[i]) for i in range(len(idx_nu_grid_l))
+            ]
 
         sigma = np.zeros_like(nu_grid)
-        for ch in tqdm(range(N_chunks)):
-            
+        for ch in range(N_chunks):
+
             # Upper and lower indices of lines in current chunk
             idx_chunk_l = int(ch*N_lines_in_chunk)
             idx_chunk_h = idx_chunk_l + N_lines_in_chunk
             idx_chunk_h = np.minimum(idx_chunk_h, len(S)) # At last chunk
+            slice_chunk = slice(idx_chunk_l, idx_chunk_h)
 
-            # Indices of nu_grid_coarse to insert current lines
-            idx_to_insert_chunk = idx_to_insert[idx_chunk_l:idx_chunk_h]
-
-            # Lines in current chunk | (N_lines,1)
-            nu_0_chunk    = nu_0[idx_chunk_l:idx_chunk_h,None]
-            gamma_G_chunk = gamma_G[idx_chunk_l:idx_chunk_h,None]
-            a_chunk = a[idx_chunk_l:idx_chunk_h,None]
-            S_chunk = S[idx_chunk_l:idx_chunk_h,None] # [s^-1/(molecule m^-2)]
+            # Lines in current chunk
+            nu_0_chunk    = nu_0[slice_chunk]
+            gamma_G_chunk = gamma_G[slice_chunk]
+            a_chunk       = a[slice_chunk]
+            S_chunk       = S[slice_chunk] # [s^-1/(molecule m^-2)]
             
-            # Correct for coarse grid | (N_lines,1)
-            nu_grid_chunk = nu_grid[idx_to_insert_chunk,None]
+            # Wavenumber-grid slices of lines in current chunk
+            slice_nu_grid_chunk = slice_nu_grid[slice_chunk]
 
-            # Eq. 10 (Gandhi et al. 2020) | (N_lines,N_wave[cut])
-            u = ((nu_line+nu_grid_chunk) - nu_0_chunk) / gamma_G_chunk
+            x = []; len_profile = []
+            for i, slice_nu_grid_i in enumerate(slice_nu_grid_chunk):
+                # Coordinates for the Faddeeva function
+                x_i = (
+                    (nu_grid[slice_nu_grid_i]-nu_0_chunk[i])/gamma_G_chunk[i] + a_chunk[i]*1j
+                )
+                x.append(x_i)
+                len_profile.append(len(x_i))
 
-            # (Scaled) Faddeeva function for Voigt profiles | (N_lines,N_wave[cut])
-            sigma_chunk = S_chunk * np.real(wofz(u+a_chunk*1j)) / (gamma_G_chunk*np.sqrt(np.pi))
+            # Faddeeva function on multiple lines at once   
+            x = np.concatenate(x) # Collapse into a 1D array
+            profiles = np.real(wofz(x))
 
-            # Upper and lower index of these lines in sigma_coarse
-            idx_sigma_l = np.maximum(0, idx_to_insert_chunk-wing_length)
-            idx_sigma_h = np.minimum(N_nu_grid, idx_to_insert_chunk+wing_length+1)
+            # Indices to separate back into lines
+            idx_profile = np.concatenate([[0], np.cumsum(len_profile)])
+            for i, slice_nu_grid_i in enumerate(slice_nu_grid_chunk):
 
-            # Upper and lower index of these lines in sigma_ch
-            idx_sigma_chunk_l = np.maximum(0, wing_length-idx_to_insert_chunk)
-            idx_sigma_chunk_h = np.minimum(N_nu_line, wing_length-idx_to_insert_chunk+N_nu_grid)
+                idx_profile_l = idx_profile[i]
+                idx_profile_h = idx_profile[i+1]
 
-            # Loop over each line profile
-            for i, sigma_i in enumerate(sigma_chunk):
                 # Add line to total cross-section
-                sigma[idx_sigma_l[i]:idx_sigma_h[i]] += sigma_i[idx_sigma_chunk_l[i]:idx_sigma_chunk_h[i]]
-            
+                sigma[slice_nu_grid_i] += (
+                    S_chunk[i] * profiles[idx_profile_l:idx_profile_h] / (gamma_G_chunk[i]*np.sqrt(np.pi))
+                )
+
         return sigma
+
     
 class LineByLine(CrossSections, LineProfileHelper):
     """
@@ -429,10 +359,6 @@ class LineByLine(CrossSections, LineProfileHelper):
         # Finer resolution to determine which lines to keep
         self.delta_nu_local_cutoff = getattr(self.config, 'delta_nu_local_cutoff', 1e-3) # [cm^-1]
         self.delta_nu_local_cutoff *= 1e2*sc.c # [cm^-1] -> [s^-1]
-
-        # Decrease the wavenumber-grid resolution for high pressures
-        #self._setup_nu_grid(self.config)
-        self.adaptive_nu_grid = getattr(self.config, 'adaptive_nu_grid', False)
 
         # (P,T)-grid to calculate cross-sections on
         self.P_grid = np.atleast_1d(self.config.P_grid) * 1e5 # [bar] -> [Pa]
@@ -676,8 +602,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         
         # Change to a coarse grid if lines are substantially broadened
         gamma_V = self.compute_voigt_width(gamma_G, gamma_L) # Voigt width
-        nu_grid_to_use, delta_nu_to_use = \
-            self._setup_coarse_nu_grid(adaptive_delta_nu=np.mean(gamma_V)/6)
+        nu_grid_to_use = self._setup_coarse_nu_grid(adaptive_delta_nu=np.mean(gamma_V)/6)
         
         # Wing cutoff from given lambda-function
         wing_cutoff_distance = self.wing_cutoff(np.mean(gamma_V), P) # [s^-1]
@@ -693,31 +618,8 @@ class LineByLine(CrossSections, LineProfileHelper):
             gamma_L=gamma_L, 
             gamma_G=gamma_G, 
             nu_grid=nu_grid_to_use, 
-            delta_nu=delta_nu_to_use, 
             wing_cutoff_distance=wing_cutoff_distance, 
         )
-        print()
-
-        import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(figsize=(12,8), nrows=2, sharex=True)
-        ax[0].plot(1e6*sc.c/nu_grid_to_use, sigma)
-
-        sigma_new = self.calculate_line_profiles_in_chunks_new(
-            nu_0=nu_0, 
-            S=S, 
-            gamma_L=gamma_L, 
-            gamma_G=gamma_G, 
-            nu_grid=nu_grid_to_use, 
-            delta_nu=delta_nu_to_use, 
-            wing_cutoff_distance=wing_cutoff_distance, 
-        )
-        ax[0].plot(1e6*sc.c/nu_grid_to_use, sigma_new, ls='--')
-        ax[1].plot(1e6*sc.c/nu_grid_to_use, (sigma-sigma_new)/sigma_new)
-        ax[1].set(xlabel='Wavelength [um]', ylim=(-1e-6,1e-6))
-        ax[0].set(xlim=(1,1.001), yscale='log')
-        plt.savefig(self.output_data_dir / 'test.pdf')
-        plt.close()
-
         if len(nu_grid_to_use) != len(self.nu_grid):
             # Interpolate to the original grid
             sigma = np.interp(self.nu_grid, nu_grid_to_use, sigma)
@@ -828,6 +730,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         T_to_plot = np.unique(T_to_plot)
 
         idx_P = np.searchsorted(self.combined_datasets['P'], 1e5) # 1 bar
+        idx_P = np.minimum(idx_P, len(self.combined_datasets['P'])-1)
 
         for idx_T, T in zip(indices_T, T_to_plot):
             if len(T_to_plot)==1:
@@ -837,6 +740,13 @@ class LineByLine(CrossSections, LineProfileHelper):
 
             ax[0].plot(wave, xsec[:,idx_P,idx_T], c=c, lw=0.7, label=f'T={T:.0f} K')
 
+        handles, _ = ax[0].get_legend_handles_labels()
+        ncols = 1 + len(handles)//8
+        ax[0].legend(
+            loc='upper right', ncol=ncols, labelcolor='linecolor', handlelength=0.5, 
+            title=f'P={self.combined_datasets["P"][idx_P]/sc.bar:.0e} bar',
+            )
+
         # Plot for certain pressures
         P_to_plot = kwargs.get('P_to_plot', self.combined_datasets['P'])
         indices_P, P_to_plot = utils.find_closest_indices(self.combined_datasets['P'], P_to_plot)
@@ -844,6 +754,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         P_to_plot = np.unique(P_to_plot)
 
         idx_T = np.searchsorted(self.combined_datasets['T'], 1000.)
+        idx_T = np.minimum(idx_T, len(self.combined_datasets['T'])-1)
 
         for idx_P, P in zip(indices_P, P_to_plot):
             if len(P_to_plot)==1:
@@ -853,17 +764,19 @@ class LineByLine(CrossSections, LineProfileHelper):
 
             ax[1].plot(wave, xsec[:,idx_P,idx_T], c=c, lw=0.7, label=f'P={P/sc.bar:.0e} bar')
 
+        handles, _ = ax[1].get_legend_handles_labels()
+        ncols = 1 + len(handles)//8
+        ax[1].legend(
+            loc='upper right', ncol=ncols, labelcolor='linecolor', handlelength=0.5, 
+            title=f'T={self.combined_datasets["T"][idx_T]:.0f} K',
+            )
+
         if ylim is None:
             xsec[xsec<=1e-150] = np.nan
             ylim = (np.nanpercentile(xsec, 3), np.nanmax(xsec)*10)
 
         ax[0].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, ylabel='xsec [cm^2 molecule^-1]')
         ax[1].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, xlabel='wavelength [um]', ylabel='xsec [cm^2 molecule^-1]')
-        
-        handles, _ = ax[0].get_legend_handles_labels()
-        ncols = 1 + len(handles)//8
-        ax[0].legend(loc='upper right', ncol=ncols, labelcolor='linecolor')
-        ax[1].legend(loc='upper right', ncol=ncols, labelcolor='linecolor')
 
         plt.savefig(self.output_data_dir / 'xsec.pdf', bbox_inches='tight')
         plt.close()
@@ -932,7 +845,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         xsec = np.moveaxis(xsec, 0, -1) # (wave, P, T) -> (P, T, wave)
 
         # Interpolate onto pRT's wavelength grid
-        pRT_wave = utils.prt_resolving_space(0.11, 250, resolving_power=1e6)
+        pRT_wave = utils.fixed_resolution_wavelength_grid(0.11, 250, resolution=1e6)
         pRT_wave *= sc.micron # [um] -> [m]
         interp_func = interp1d(
             x=self.combined_datasets['wave'], y=np.log10(xsec), kind='linear', 
@@ -946,7 +859,17 @@ class LineByLine(CrossSections, LineProfileHelper):
         xsec = xsec[:,:,mask_wave] # Crop to the range of valid wavelengths
         pRT_wave = pRT_wave[mask_wave]
 
-        resolution = sc.c / sc.micron / self.delta_nu  # Resolution at 1 um
+        resolution = self.resolution
+        if not np.isnan(self.delta_nu):
+            # Use the given delta_nu, resolution at 1 um
+            resolution = sc.c / sc.micron / self.delta_nu
+        elif not np.isnan(self.delta_wave):
+            # Use the given delta_wave, resolution at 1 um
+            resolution = sc.micron / self.delta_wave
+        if np.isnan(resolution):
+            idx = np.searchsorted(self.combined_datasets['wave'], 1e-6)
+            delta_wave = np.diff(self.combined_datasets['wave'][idx-1:idx+1])
+            resolution = self.combined_datasets['wave'][idx] / delta_wave
 
         # Fill the dictionary
         data['xsecarr'] = xsec[:,:,::-1] # Ascending in wavenumber
@@ -963,7 +886,7 @@ class LineByLine(CrossSections, LineProfileHelper):
             ])
         
         linelist = pRT3_metadata.get('linelist', self.database.capitalize())
-        if linelist in ['Hitran', 'HITEMP']:
+        if linelist in ['Hitran', 'Hitemp']:
             linelist = linelist.upper()
 
         pRT_file = '{}__{}.R{:.0e}_{:.1f}-{:.1f}mu.xsec.petitRADTRANS.h5'
