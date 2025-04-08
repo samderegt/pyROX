@@ -169,10 +169,9 @@ class CIA(CrossSections):
         ncols = 1 + len(handles)//8
         ax[0].legend(loc='upper right', ncol=ncols, labelcolor='linecolor')
 
+        plt.savefig(self.output_data_dir / 'cia_coeffs.pdf', bbox_inches='tight')
         if return_fig_ax:
             return fig, ax
-        # Otherwise save the figure
-        plt.savefig(self.output_data_dir / 'cia_coeffs.pdf', bbox_inches='tight')
         plt.close()
     
     def convert_to_pRT3(self, contributor=None, **kwargs):

@@ -779,10 +779,9 @@ class LineByLine(CrossSections, LineProfileHelper):
         ax[0].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, ylabel='xsec [cm^2 molecule^-1]')
         ax[1].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, xlabel='wavelength [um]', ylabel='xsec [cm^2 molecule^-1]')
 
+        plt.savefig(self.output_data_dir / 'xsec.pdf', bbox_inches='tight')
         if return_fig_ax:
             return fig, ax
-        # Otherwise save the figure
-        plt.savefig(self.output_data_dir / 'xsec.pdf', bbox_inches='tight')
         plt.close()
 
     def convert_to_pRT3(self, contributor=None, **kwargs):

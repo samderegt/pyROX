@@ -41,3 +41,11 @@ local_cutoff  = 0.25
 
 # Function with arguments gamma_V [cm^-1], and P [bar]
 wing_cutoff = lambda gamma_V, P: 25 if P<=200 else 100 # Gharib-Nezhad et al. (2024)
+
+# Metadata to be stored in pRT3's .h5 file
+pRT3_metadata = dict(
+    DOI = '10.1016/j.jqsrt.2019.106687', # DOI of the data
+    mol_name = 'FeH',                    # Using the right capitalisation
+    linelist = 'MoLLIST',                # Line-list name, used in .h5 filename
+    isotopologue_id = {'Fe':56, 'H':1},  # Atomic number of each element
+)

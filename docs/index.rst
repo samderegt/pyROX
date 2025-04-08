@@ -34,7 +34,7 @@ source code and see them reflected in your Python environment immediately.
 
 License and Acknowledgements
 ----------------------------
-pyROX is licensed under the `MIT License <https://github.com/samderegt/pyROX/LICENSE>`_. 
+pyROX is available under the `MIT License <https://github.com/samderegt/pyROX/LICENSE>`_. 
 
 The package is developed and maintained by Sam de Regt, with contributions from
 Siddharth Gandhi, Louis Siebenaler, and Dario Gonzalez Picos.
@@ -51,6 +51,6 @@ Guide
 
 .. toctree::
    :maxdepth: 2
-   :caption: Guide:
 
-   notebooks/getting_started
+   tutorial
+   api/modules
