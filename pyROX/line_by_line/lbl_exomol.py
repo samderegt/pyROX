@@ -4,18 +4,20 @@ from pandas import read_fwf
 import pathlib
 import re
 
-from pyROX.utils import sc
-from pyROX import utils
+from pyROX import utils, sc
 from .lbl import LineByLine
 
-class ExoMol(LineByLine):
+class LBL_ExoMol(LineByLine):
+    """
+    Class for handling line-by-line cross-sections from ExoMol data.
+    """
 
     def download_data(self, config):
         """
-        Download data from ExoMol.
+        Downloads data from ExoMol.
 
-        Parameters:
-        config (object): Configuration object containing parameters.
+        Args:
+            config (object): Configuration object containing parameters.
         """
         print('\nDownloading data from ExoMol')
 
@@ -61,11 +63,11 @@ class ExoMol(LineByLine):
     
     def __init__(self, config, **kwargs):
         """
-        Initialize the ExoMol object.
+        Initialises the ExoMol object.
 
-        Parameters:
-        config (object): Configuration object containing parameters.
-        **kwargs: Additional arguments for initialization.
+        Args:
+            config (object): Configuration object containing parameters.
+            **kwargs: Additional arguments for initialisation.
         """
         print('-'*60)
         print('  Line-by-line Absorption from ExoMol')
@@ -75,10 +77,10 @@ class ExoMol(LineByLine):
 
     def _read_configuration_parameters(self, config):
         """
-        Read parameters specific to ExoMol calculations from the configuration.
+        Reads parameters specific to ExoMol calculations from the configuration.
 
-        Parameters:
-        config (object): Configuration object containing parameters.
+        Args:
+            config (object): Configuration object containing parameters.
         """
         # Read the common parameters
         super()._read_configuration_parameters(config)
@@ -88,12 +90,12 @@ class ExoMol(LineByLine):
 
     def _read_broadening_per_transition(self, J_l, J_u, chunk_size=100_000):
         """
-        Read broadening parameters for each transition.
+        Reads broadening parameters for each transition.
 
-        Parameters:
-        J_l (array): Lower state rotational quantum numbers.
-        J_u (array): Upper state rotational quantum numbers.
-        chunk_size (int): Size of chunks to process at a time.
+        Args:
+            J_l (array): Lower state rotational quantum numbers.
+            J_u (array): Upper state rotational quantum numbers.
+            chunk_size (int): Size of chunks to process at a time.
         """
         for perturber, info in self.pressure_broadening_info_copy.items():
             # Get the broadening parameters
@@ -148,7 +150,7 @@ class ExoMol(LineByLine):
 
     def _read_states(self):
         """
-        Read the states from the states file.
+        Reads the states from the states file.
         """
         states_file = self.config.files.get('states', None)
         if states_file is None:
@@ -190,13 +192,13 @@ class ExoMol(LineByLine):
         if np.any(ID_diff > 1):
             raise ValueError(f'Some state IDs are skipped in states file (ID: {self.states_ID[ID_diff>1]}).')
 
-    def _read_transitions(self, input_file, **kwargs):
+    def process_transitions(self, input_file, **kwargs):
         """
-        Read transitions from the input file and compute cross-sections.
+        Reads transitions from the input file and compute cross-sections.
 
-        Parameters:
-        input_file (str): Path to the input file.
-        **kwargs: Additional arguments.
+        Args:
+            input_file (str): Path to the input file.
+            **kwargs: Additional arguments.
         """
         self._read_states()
 
@@ -246,7 +248,7 @@ class ExoMol(LineByLine):
                     J_u = self.states_J[idx_u]
 
                     # Remove any nu = 0 transitions
-                    A, E_low, nu_0, g_up, J_l, J_u = self.mask_arrays(
+                    A, E_low, nu_0, g_up, J_l, J_u = self._mask_arrays(
                         [A, E_low, nu_0, g_up, J_l, J_u], mask=(nu_0 > 0)
                     )
 

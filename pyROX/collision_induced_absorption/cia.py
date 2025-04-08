@@ -2,9 +2,7 @@ import numpy as np
 
 import datetime
 
-from pyROX.utils import sc
-from pyROX import utils
-from pyROX.cross_sections import CrossSections
+from pyROX import utils, sc, CrossSections
 
 class CIA(CrossSections):
     """
@@ -14,11 +12,11 @@ class CIA(CrossSections):
         """
         Download CIA data from HITRAN or Borysow.
 
-        Parameters:
-        config (object): Configuration object containing URLs and input data directory.
+        Args:
+            config (object): Configuration object containing URLs and input data directory.
 
         Raises:
-        ValueError: If any file fails to download.
+            ValueError: If any file fails to download.
         """
 
         print('\nDownloading CIA data')
@@ -33,11 +31,11 @@ class CIA(CrossSections):
 
     def __init__(self, config, **kwargs):
         """
-        Initialize the CIA object.
+        Initialises the CIA object.
 
-        Parameters:
-        config (object): Configuration object containing settings and file paths.
-        **kwargs: Additional arguments for initialization.
+        Args:
+            config (object): Configuration object containing settings and file paths.
+            **kwargs: Additional arguments for initialisation.
         """
         # Initialise the CrossSections parent class
         super().__init__(config, **kwargs)
@@ -46,9 +44,9 @@ class CIA(CrossSections):
         """
         Calculate the CIA coefficients and save temporary outputs.
 
-        Parameters:
-        overwrite (bool): Whether to overwrite existing temporary files.
-        **kwargs: Additional arguments for calculation.
+        Args:
+            overwrite (bool): Whether to overwrite existing temporary files.
+            **kwargs: Additional arguments for calculation.
         """
 
         print('\nCalculating CIA coefficients')
@@ -84,7 +82,7 @@ class CIA(CrossSections):
             if len(masks) != 0:
                 # Remove temperatures outside the range
                 mask_T = masks[0](T_grid)
-                T_grid, abs_coeff_k, abs_coeff_alpha = self.mask_arrays(
+                T_grid, abs_coeff_k, abs_coeff_alpha = self._mask_arrays(
                     [T_grid, abs_coeff_k, abs_coeff_alpha], mask=mask_T, axis=0
                     )
 
@@ -114,8 +112,8 @@ class CIA(CrossSections):
         """
         Save the merged CIA outputs to a file.
 
-        Parameters:
-        **kwargs: Additional arguments for saving.
+        Args:
+            **kwargs: Additional arguments for saving.
         """
         super().save_combined_outputs(keys_to_merge=['log10(k)','log10(alpha)'], **kwargs)
 
@@ -123,14 +121,14 @@ class CIA(CrossSections):
         """
         Plot the merged CIA coefficients.
 
-        Parameters:
-        return_fig_ax (bool): Whether to return the figure and axes objects.
-        cmap (str): Colormap for the plot.
-        xscale (str): Scale for the x-axis ('linear' or 'log').
-        yscale (str): Scale for the y-axis ('linear' or 'log').
-        xlim (tuple, optional): Limits for the x-axis.
-        ylim (tuple, optional): Limits for the y-axis.
-        **kwargs: Additional arguments for plotting.
+        Args:
+            return_fig_ax (bool): Whether to return the figure and axes objects.
+            cmap (str): Colormap for the plot.
+            xscale (str): Scale for the x-axis ('linear' or 'log').
+            yscale (str): Scale for the y-axis ('linear' or 'log').
+            xlim (tuple, optional): Limits for the x-axis.
+            ylim (tuple, optional): Limits for the y-axis.
+            **kwargs: Additional arguments for plotting.
         """
         
         print(f'\nPlotting CIA coefficients')
@@ -178,13 +176,13 @@ class CIA(CrossSections):
         """
         Convert the CIA data to petitRADTRANS v3.0 format.
 
-        Parameters:
-        contributor (str): Name of the contributor for these data.
-        **kwargs: Additional arguments for conversion.
+        Args:
+            contributor (str): Name of the contributor for these data.
+            **kwargs: Additional arguments for conversion.
 
         Raises:
-        ValueError: If required metadata is missing in the configuration.
-        KeyError: If required keys are missing in the metadata.
+            ValueError: If required metadata is missing in the configuration.
+            KeyError: If required keys are missing in the metadata.
         """
 
         print(f'\nConverting to petitRADTRANS-v3.0 format')
@@ -250,4 +248,4 @@ class CIA(CrossSections):
 
         # Save the datasets
         utils.save_to_hdf5(pRT_file, data=data, attrs=attrs, compression=None)
-        print(f'  Saved to {pRT_file}')
+        print(f'  Saved to \"{pRT_file}\"')

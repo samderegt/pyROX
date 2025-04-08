@@ -8,24 +8,25 @@ import datetime
 
 from tqdm import tqdm
 
-from pyROX.cross_sections import CrossSections
-from pyROX.utils import sc
-from pyROX import utils
+from pyROX import utils, sc, CrossSections
 
 class LineProfileHelper:
+    """
+    Helper class for line profile calculations.
+    """
 
     def compute_line_strength(self, T, S_0, E_low, nu_0):
         """
-        Calculate the line strength for a given temperature.
+        Calculates the line strength for a given temperature.
 
-        Parameters:
-        T (float): Temperature in Kelvin.
-        S_0 (float): Line strength at reference temperature.
-        E_low (float): Lower state energy in Joules.
-        nu_0 (float): Transition frequency in s^-1.
+        Args:
+            T (float): Temperature in Kelvin.
+            S_0 (float): Line strength at reference temperature.
+            E_low (float): Lower state energy in Joules.
+            nu_0 (float): Transition frequency in s^-1.
 
         Returns:
-        float: Line strength in s^-1/(molecule m^-2).
+            float: Line strength in s^-1/(molecule m^-2).
         """
         # Partition function
         q = self.calculate_partition_function(T)
@@ -39,31 +40,31 @@ class LineProfileHelper:
 
     def normalise_wing_cutoff(self, S, cutoff_distance, gamma_L):
         """
-        Normalise the line strength to account for wing cutoff.
+        Normalises the line strength to account for wing cutoff.
 
-        Parameters:
-        S (array): Line strengths.
-        cutoff_distance (float): Distance for wing cutoff.
-        gamma_L (array): Lorentzian widths.
+        Args:
+            S (array): Line strengths.
+            cutoff_distance (float): Distance for wing cutoff.
+            gamma_L (array): Lorentzian widths.
 
         Returns:
-        array: Normalised line strengths.
+            array: Normalised line strengths.
         """
         # Eq. A6 Lacy & Burrows (2023)
         return S / ((2/np.pi)*np.arctan(cutoff_distance/gamma_L))
 
     def pressure_shift(self, P, T, nu_0, delta=None):
         """
-        Apply pressure shift to the transition frequency.
+        Applies pressure shift to the transition frequency.
 
-        Parameters:
-        P (float): Pressure in Pa.
-        T (float): Temperature in Kelvin.
-        nu_0 (array): Transition frequencies in s^-1.
-        delta (float, optional): Pressure shift coefficient.
+        Args:
+            P (float): Pressure in Pa.
+            T (float): Temperature in Kelvin.
+            nu_0 (array): Transition frequencies in s^-1.
+            delta (float, optional): Pressure shift coefficient.
 
         Returns:
-        array: Pressure-shifted frequencies.
+            array: Pressure-shifted frequencies.
         """
         if delta is None:
             return nu_0 # No pressure shift
@@ -73,16 +74,16 @@ class LineProfileHelper:
 
     def compute_vdw_broadening(self, P, T, E_low, **kwargs):
         """
-        Calculate Van der Waals broadening.
+        Calculates Van der Waals broadening.
 
-        Parameters:
-        P (float): Pressure in Pa.
-        T (float): Temperature in Kelvin.
-        E_low (float): Lower state energy in Joules.
-        **kwargs: Additional parameters.
+        Args:
+            P (float): Pressure in Pa.
+            T (float): Temperature in Kelvin.
+            E_low (float): Lower state energy in Joules.
+            **kwargs: Additional parameters.
 
         Returns:
-        float: Van der Waals broadening in s^-1.
+            float: Van der Waals broadening in s^-1.
         """
         # Van der Waals broadening
         gamma_vdW = np.zeros_like(E_low)
@@ -99,67 +100,67 @@ class LineProfileHelper:
 
     def compute_natural_broadening(self, A):
         """
-        Calculate natural broadening.
+        Calculates natural broadening.
 
-        Parameters:
-        A (float): Einstein A-coefficient in s^-1.
+        Args:
+            A (float): Einstein A-coefficient in s^-1.
 
         Returns:
-        float: Natural broadening in s^-1.
+            float: Natural broadening in s^-1.
         """
         return A / (4*np.pi) # [s^-1]
 
     def compute_doppler_broadening(self, T, nu_0):
         """
-        Calculate Doppler broadening.
+        Calculates Doppler broadening.
 
-        Parameters:
-        T (float): Temperature in Kelvin.
-        nu_0 (float): Transition frequency in s^-1.
+        Args:
+            T (float): Temperature in Kelvin.
+            nu_0 (float): Transition frequency in s^-1.
 
         Returns:
-        float: Doppler broadening in s^-1.
+            float: Doppler broadening in s^-1.
         """
         return np.sqrt(2*sc.k*T/self.mass) * nu_0/sc.c # [s^-1]
 
     def compute_lorentz_width(self, gamma_vdW, gamma_N):
         """
-        Calculate Lorentzian width.
+        Calculates Lorentzian width.
 
-        Parameters:
-        gamma_vdW (float): Van der Waals broadening in s^-1.
-        gamma_N (float): Natural broadening in s^-1.
+        Args:
+            gamma_vdW (float): Van der Waals broadening in s^-1.
+            gamma_N (float): Natural broadening in s^-1.
 
         Returns:
-        float: Lorentzian width in s^-1.
+            float: Lorentzian width in s^-1.
         """
         return gamma_vdW + gamma_N # [s^-1]
 
     def compute_voigt_width(self, gamma_G, gamma_L):
         """
-        Calculate Voigt width.
+        Calculates Voigt width.
 
-        Parameters:
-        gamma_G (float): Gaussian width in s^-1.
-        gamma_L (float): Lorentzian width in s^-1.
+        Args:
+            gamma_G (float): Gaussian width in s^-1.
+            gamma_L (float): Lorentzian width in s^-1.
 
         Returns:
-        float: Voigt width in s^-1.
+            float: Voigt width in s^-1.
         """
         return 0.5346*gamma_L+np.sqrt(0.2166*gamma_L**2 + gamma_G**2) # [s^-1]
 
     def apply_local_cutoff(self, S, nu_0, factor):
         """
-        Apply local cutoff to line strengths. Retain lines with 
+        Applies local cutoff to line strengths. Retain lines with 
         a certain fraction of cumulative strength.
 
-        Parameters:
-        S (array): Line strengths.
-        nu_0 (array): Transition frequencies in s^-1.
-        factor (float): Fraction of cumulative strength to retain.
+        Args:
+            S (array): Line strengths.
+            nu_0 (array): Transition frequencies in s^-1.
+            factor (float): Fraction of cumulative strength to retain.
 
         Returns:
-        array: Modified line strengths.
+            array: Modified line strengths.
         """
         if factor == 0.:
             return S
@@ -216,19 +217,19 @@ class LineProfileHelper:
             N_lines_in_chunk=500,
             ):
         """
-        Calculate line profiles in chunks to optimize speed.
+        Calculates line profiles in chunks to optimise speed.
 
-        Parameters:
-        nu_0 (array): Transition frequencies in s^-1.
-        S (array): Line strengths.
-        gamma_L (array): Lorentzian widths.
-        gamma_G (array): Gaussian widths.
-        nu_grid (array): Wavenumber grid.
-        wing_cutoff_distance (float): Wing cutoff distance in s^-1.
-        N_lines_in_chunk (int): Number of lines to process in each chunk.
+        Args:
+            nu_0 (array): Transition frequencies in s^-1.
+            S (array): Line strengths.
+            gamma_L (array): Lorentzian widths.
+            gamma_G (array): Gaussian widths.
+            nu_grid (array): Wavenumber grid.
+            wing_cutoff_distance (float): Wing cutoff distance in s^-1.
+            N_lines_in_chunk (int): Number of lines to process in each chunk.
 
         Returns:
-        array: Opacity cross-section on the grid.
+            array: Opacity cross-section on the grid.
         """
         # Indices where lines should be inserted
         idx_to_insert = np.searchsorted(nu_grid, nu_0) - 1
@@ -302,21 +303,21 @@ class LineByLine(CrossSections, LineProfileHelper):
 
     def __init__(self, config, **kwargs):
         """
-        Initialize the LineByLine object.
+        Initialises the LineByLine object.
 
-        Parameters:
-        config (object): Configuration object containing parameters.
-        **kwargs: Additional arguments for initialization.
+        Args:
+            config (object): Configuration object containing parameters.
+            **kwargs: Additional arguments for initialisation.
         """
         # Initialise the CrossSections parent class
         super().__init__(config, **kwargs)
 
     def _read_configuration_parameters(self, config):
         """
-        Read parameters specific to line-by-line calculations from the configuration.
+        Reads parameters specific to line-by-line calculations from the configuration.
 
-        Parameters:
-        config (object): Configuration object containing parameters.
+        Args:
+            config (object): Configuration object containing parameters.
         """
         # Read the common parameters
         super()._read_configuration_parameters(config)
@@ -370,7 +371,7 @@ class LineByLine(CrossSections, LineProfileHelper):
 
     def _read_equation_of_state(self):
         """
-        Read the equation of state for the gas mixture.
+        Reads the equation of state for the gas mixture.
         """
         EOS_table = getattr(self.config, 'EOS_table', None)
         if EOS_table is None:
@@ -402,7 +403,7 @@ class LineByLine(CrossSections, LineProfileHelper):
 
     def _read_mass(self):
         """
-        Read the mass of the species from the configuration or database.
+        Reads the mass of the species from the configuration or database.
         """
         self.mass = getattr(self.config, 'mass', None)
         if (self.mass is None) and (self.database in ['hitran', 'exomol']):
@@ -415,7 +416,7 @@ class LineByLine(CrossSections, LineProfileHelper):
 
     def _read_pressure_broadening_info(self):
         """
-        Read the pressure broadening parameters from the configuration.
+        Reads the pressure broadening parameters from the configuration.
         """
 
         perturber_info = getattr(self.config, 'perturber_info', None)
@@ -515,7 +516,7 @@ class LineByLine(CrossSections, LineProfileHelper):
 
     def _read_partition_function(self):
         """
-        Read the partition function from the configuration file.
+        Reads the partition function from the configuration file.
         """
         file = self.config.files.get('partition_function', None)
         if file is None:
@@ -531,12 +532,12 @@ class LineByLine(CrossSections, LineProfileHelper):
 
     def iterate_over_PT_grid(self, function, progress_bar=True, **kwargs):
         """
-        Iterate over the pressure-temperature grid and apply a function.
+        Iterates over the pressure-temperature grid and apply a function.
 
-        Parameters:
-        function (callable): Function to apply at each grid point.
-        progress_bar (bool): Whether to show a progress bar.
-        **kwargs: Additional arguments for the function.
+        Args:
+            function (callable): Function to apply at each grid point.
+            progress_bar (bool): Whether to show a progress bar.
+            **kwargs: Additional arguments for the function.
         """
         # Make a nice progress bar
         pbar_kwargs = dict(
@@ -555,17 +556,17 @@ class LineByLine(CrossSections, LineProfileHelper):
     
     def calculate_cross_sections(self, P, T, nu_0, S_0, E_low, A, delta=None, **kwargs):
         """
-        Compute the cross-sections for given parameters.
+        Computes the cross-sections for given parameters.
 
-        Parameters:
-        P (float): Pressure in Pa.
-        T (float): Temperature in Kelvin.
-        nu_0 (array): Transition frequencies in s^-1.
-        S_0 (array): Line strengths at reference temperature.
-        E_low (array): Lower state energies in Joules.
-        A (array): Einstein A-coefficients in s^-1.
-        delta (array, optional): Pressure shift coefficients.
-        **kwargs: Additional arguments.
+        Args:
+            P (float): Pressure in Pa.
+            T (float): Temperature in Kelvin.
+            nu_0 (array): Transition frequencies in s^-1.
+            S_0 (array): Line strengths at reference temperature.
+            E_low (array): Lower state energies in Joules.
+            A (array): Einstein A-coefficients in s^-1.
+            delta (array, optional): Pressure shift coefficients.
+            **kwargs: Additional arguments.
         """
         # Get the line-widths
         gamma_N   = self.compute_natural_broadening(A) # Lorentzian components
@@ -582,7 +583,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         nu_0 = self.pressure_shift(P, T, nu_0, delta=delta)
 
         # Select only the lines within the wavelength range
-        nu_0, S_0, E_low, gamma_L, gamma_G = self.mask_arrays(
+        nu_0, S_0, E_low, gamma_L, gamma_G = self._mask_arrays(
             [nu_0, S_0, E_low, gamma_L, gamma_G], mask=(nu_0>self.nu_min) & (nu_0<self.nu_max)
             )
         if len(S_0) == 0:
@@ -594,7 +595,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         # Apply local and global line-strength cutoffs
         S = self.apply_local_cutoff(S, nu_0, factor=self.local_cutoff)
         S_min = max([0., self.global_cutoff])
-        nu_0, S, gamma_L, gamma_G = self.mask_arrays(
+        nu_0, S, gamma_L, gamma_G = self._mask_arrays(
             [nu_0, S, gamma_L, gamma_G], mask=(S>S_min)
         )
         if len(S) == 0:
@@ -631,12 +632,12 @@ class LineByLine(CrossSections, LineProfileHelper):
 
     def calculate_temporary_outputs(self, overwrite=False, files_range=None, **kwargs):
         """
-        Calculate temporary outputs for cross-sections.
+        Calculates temporary outputs for cross-sections.
 
-        Parameters:
-        overwrite (bool): Whether to overwrite existing files.
-        files_range (tuple, optional): Range of files to process.
-        **kwargs: Additional arguments.
+        Args:
+            overwrite (bool): Whether to overwrite existing files.
+            files_range (tuple, optional): Range of files to process.
+            **kwargs: Additional arguments.
         """
         print('\nCalculating cross-sections')
 
@@ -659,7 +660,7 @@ class LineByLine(CrossSections, LineProfileHelper):
             self.sigma = np.zeros(
                 (len(self.nu_grid), len(self.P_grid), len(self.T_grid)), dtype=float
                 )
-            self._read_transitions(input_file, **kwargs)
+            self.process_transitions(input_file, **kwargs)
 
             if np.all(self.sigma == 0.):
                 continue # No lines in this file, no need to save
@@ -685,25 +686,25 @@ class LineByLine(CrossSections, LineProfileHelper):
 
     def save_combined_outputs(self, **kwargs):
         """
-        Save the merged outputs to a file.
+        Saves the merged outputs to a file.
 
-        Parameters:
-        **kwargs: Additional arguments for saving.
+        Args:
+            **kwargs: Additional arguments for saving.
         """
         super().save_combined_outputs(keys_to_merge=['log10(xsec)'], **kwargs)
 
     def plot_combined_outputs(self, return_fig_ax=False, cmaps=['coolwarm','viridis'], xscale='log', yscale='log', xlim=None, ylim=None, **kwargs):
         """
-        Plot the merged outputs.
+        Plots the merged outputs.
 
-        Parameters:
-        return_fig_ax (bool): Whether to return the figure and axes.
-        cmaps (list): List of colormaps for plotting.
-        xscale (str): Scale for the x-axis.
-        yscale (str): Scale for the y-axis.
-        xlim (tuple, optional): Limits for the x-axis.
-        ylim (tuple, optional): Limits for the y-axis.
-        **kwargs: Additional arguments for plotting.
+        Args:
+            return_fig_ax (bool): Whether to return the figure and axes.
+            cmaps (list): List of colormaps for plotting.
+            xscale (str): Scale for the x-axis.
+            yscale (str): Scale for the y-axis.
+            xlim (tuple, optional): Limits for the x-axis.
+            ylim (tuple, optional): Limits for the y-axis.
+            **kwargs: Additional arguments for plotting.
         """
         
         print('\nPlotting cross-sections')
@@ -786,15 +787,15 @@ class LineByLine(CrossSections, LineProfileHelper):
 
     def convert_to_pRT3(self, contributor=None, **kwargs):
         """
-        Convert the cross-sections to petitRADTRANS v3.0 format.
+        Converts the cross-sections to petitRADTRANS v3.0 format.
 
-        Parameters:
-        contributor (str): Name of the contributor for these data.
-        **kwargs: Additional arguments for conversion.
+        Args:
+            contributor (str): Name of the contributor for these data.
+            **kwargs: Additional arguments for conversion.
 
         Raises:
-        ValueError: If required metadata is missing in the configuration.
-        KeyError: If required keys are missing in the metadata.
+            ValueError: If required metadata is missing in the configuration.
+            KeyError: If required keys are missing in the metadata.
         """
         print(f'\nConverting to petitRADTRANS-v3.0 format')
 
@@ -900,4 +901,4 @@ class LineByLine(CrossSections, LineProfileHelper):
 
         # Save the datasets
         utils.save_to_hdf5(pRT_file, data=data, attrs=attrs, compression=None)
-        print(f'  Saved to {pRT_file}')
+        print(f'  Saved to \"{pRT_file}\"')

@@ -1,19 +1,22 @@
 import numpy as np
 from pandas import read_fwf
+
 import pathlib
 
-from pyROX.utils import sc
-from pyROX import utils
+from pyROX import utils, sc
 from .lbl import LineByLine
 
-class HITRAN(LineByLine):
+class LBL_HITRAN(LineByLine):
+    """
+    Class for handling line-by-line cross-sections from HITRAN data.
+    """
 
     def download_data(self, config):
         """
-        Download data from HITRAN.
+        Downloads data from HITRAN.
 
-        Parameters:
-        config (object): Configuration object containing parameters.
+        Args:
+            config (object): Configuration object containing parameters.
         """
         print('\nDownloading data from HITRAN')
 
@@ -27,11 +30,11 @@ class HITRAN(LineByLine):
     
     def __init__(self, config, **kwargs):
         """
-        Initialize the HITRAN object.
+        Initialises the HITRAN object.
 
-        Parameters:
-        config (object): Configuration object containing parameters.
-        **kwargs: Additional arguments for initialization.
+        Args:
+            config (object): Configuration object containing parameters.
+            **kwargs: Additional arguments for initialisation.
         """
         print('-'*60)
         print('  Line-by-line Absorption from HITRAN/HITEMP')
@@ -41,10 +44,10 @@ class HITRAN(LineByLine):
 
     def _read_configuration_parameters(self, config):
         """
-        Read parameters specific to HITRAN calculations from the configuration.
+        Reads parameters specific to HITRAN calculations from the configuration.
 
-        Parameters:
-        config (object): Configuration object containing parameters.
+        Args:
+            config (object): Configuration object containing parameters.
         """
         # Read the common parameters
         super()._read_configuration_parameters(config)
@@ -66,13 +69,13 @@ class HITRAN(LineByLine):
             self.pressure_broadening_info[perturber].pop('diet', None)
             self.pressure_broadening_info[perturber].pop('J', None)
 
-    def _read_transitions(self, input_file, **kwargs):
+    def process_transitions(self, input_file, **kwargs):
         """
-        Read transitions from the input file and compute cross-sections.
+        Reads transitions from the input file and computes cross-sections.
 
-        Parameters:
-        input_file (str): Path to the input file.
-        **kwargs: Additional arguments.
+        Args:
+            input_file (str): Path to the input file.
+            **kwargs: Additional arguments.
         """
         input_file = pathlib.Path(input_file)
         print(f'  Reading transitions from \"{input_file}\"')

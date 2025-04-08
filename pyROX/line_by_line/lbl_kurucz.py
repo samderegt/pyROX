@@ -4,11 +4,13 @@ from scipy.interpolate import interp1d
 
 import pathlib
 
-from pyROX.utils import sc
-from pyROX import utils
+from pyROX import utils, sc
 from .lbl import LineByLine
 
-class Kurucz(LineByLine):
+class LBL_Kurucz(LineByLine):
+    """
+    Class for handling line-by-line cross-sections from Kurucz data.
+    """
 
     parent_dir = pathlib.Path(__file__).parent.resolve()
     parent_dir = parent_dir.parent / 'data'
@@ -18,8 +20,8 @@ class Kurucz(LineByLine):
         """
         Download data from Kurucz.
 
-        Parameters:
-        config (object): Configuration object containing parameters.
+        Args:
+            config (object): Configuration object containing parameters.
         """
         # Download states from NIST (used for partition function)
         element = config.species
@@ -59,11 +61,11 @@ class Kurucz(LineByLine):
     
     def __init__(self, config, **kwargs):
         """
-        Initialize the Kurucz object.
+        Initialises the Kurucz object.
 
-        Parameters:
-        config (object): Configuration object containing parameters.
-        **kwargs: Additional arguments for initialization.
+        Args:
+            config (object): Configuration object containing parameters.
+            **kwargs: Additional arguments for initialisation.
         """
         print('-'*60)
         print('  Line-by-line Absorption from VALD/Kurucz')
@@ -75,8 +77,8 @@ class Kurucz(LineByLine):
         """
         Read parameters specific to Kurucz calculations from the configuration.
 
-        Parameters:
-        config (object): Configuration object containing parameters.
+        Args:
+            config (object): Configuration object containing parameters.
         """
         # Read the common parameters
         super()._read_configuration_parameters(config)
@@ -102,11 +104,11 @@ class Kurucz(LineByLine):
         """
         Read impact width/shift information from the configuration.
 
-        Parameters:
-        impact_info (dict): Dictionary containing impact information.
+        Args:
+            impact_info (dict): Dictionary containing impact information.
 
         Returns:
-        dict: Updated impact information.
+            dict: Updated impact information.
         """
         if len(impact_info) == 0:
             # No impact width info provided
@@ -137,8 +139,8 @@ class Kurucz(LineByLine):
         """
         Read the partition function from the configuration file.
 
-        Parameters:
-        T_grid (array): Temperature grid for partition function calculation.
+        Args:
+            T_grid (array): Temperature grid for partition function calculation.
         """
         file = self.config.files.get('states', None)
         if file is None:
@@ -169,11 +171,11 @@ class Kurucz(LineByLine):
         """
         Read transitions from a Kurucz input file.
 
-        Parameters:
-        input_file (str): Path to the input file.
+        Args:
+            input_file (str): Path to the input file.
 
         Returns:
-        tuple: Arrays of transition parameters (nu_0, E_low, A, g_up, gamma_vdW, gamma_N).
+            tuple: Arrays of transition parameters (nu_0, E_low, A, g_up, gamma_vdW, gamma_N).
         """
         # Load all transitions at once
         transitions = read_fwf(
@@ -224,11 +226,11 @@ class Kurucz(LineByLine):
         """
         Read transitions from a VALD input file.
 
-        Parameters:
-        input_file (str): Path to the input file.
+        Args:
+            input_file (str): Path to the input file.
 
         Raises:
-        NotImplementedError: If the method is not implemented.
+            NotImplementedError: If the method is not implemented.
         """
         raise NotImplementedError('VALD transitions not implemented yet.')
 
@@ -236,14 +238,14 @@ class Kurucz(LineByLine):
         """
         Calculate Van der Waals broadening.
 
-        Parameters:
-        P (float): Pressure in Pa.
-        T (float): Temperature in Kelvin.
-        E_low (array): Lower state energies in Joules.
-        nu_0 (array): Transition frequencies in s^-1.
+        Args:
+            P (float): Pressure in Pa.
+            T (float): Temperature in Kelvin.
+            E_low (array): Lower state energies in Joules.
+            nu_0 (array): Transition frequencies in s^-1.
 
         Returns:
-        array: Van der Waals broadening in s^-1.
+            array: Van der Waals broadening in s^-1.
         """
         # Get number density from equation-of-state or ideal-gas
         number_density = self.calculate_number_density(P, T) # [m^-3]
@@ -286,7 +288,7 @@ class Kurucz(LineByLine):
             ) # [s^-1]
 
         # Impact width (Allard et al. 2023)
-        gamma_vdW = self.apply_impact_Allard_ea_2023(P, T, nu_0, gamma=gamma_vdW)
+        gamma_vdW = self._apply_impact_Allard_ea_2023(P, T, nu_0, gamma=gamma_vdW)
 
         return gamma_vdW
 
@@ -294,11 +296,11 @@ class Kurucz(LineByLine):
         """
         Calculate natural broadening.
 
-        Parameters:
-        A (float): Einstein A-coefficient in s^-1.
+        Args:
+            A (float): Einstein A-coefficient in s^-1.
 
         Returns:
-        float: Natural broadening in s^-1.
+            float: Natural broadening in s^-1.
         """
         # Natural broadening from Einstein A-coefficient
         gamma_N = super().compute_natural_broadening(A)
@@ -312,34 +314,34 @@ class Kurucz(LineByLine):
         """
         Apply pressure shift to the transition frequency.
 
-        Parameters:
-        P (float): Pressure in Pa.
-        T (float): Temperature in Kelvin.
-        nu_0 (array): Transition frequencies in s^-1.
-        delta (float, optional): Pressure shift coefficient.
+        Args:
+            P (float): Pressure in Pa.
+            T (float): Temperature in Kelvin.
+            nu_0 (array): Transition frequencies in s^-1.
+            delta (float, optional): Pressure shift coefficient.
 
         Returns:
-        array: Pressure-shifted frequencies.
+            array: Pressure-shifted frequencies.
         """
         # Use the default pressure-shift from the parent class
         nu_0 = super().pressure_shift(P, T, nu_0, delta=delta)
         
         # Apply impact shift (Allard et al. 2023)
-        nu_0 = self.apply_impact_Allard_ea_2023(P, T, nu_0)
+        nu_0 = self._apply_impact_Allard_ea_2023(P, T, nu_0)
         return nu_0
 
-    def apply_impact_Allard_ea_2023(self, P, T, nu_0, gamma=None):
+    def _apply_impact_Allard_ea_2023(self, P, T, nu_0, gamma=None):
         """
         Apply impact width/shift (Allard et al. 2023).
 
-        Parameters:
-        P (float): Pressure in Pa.
-        T (float): Temperature in Kelvin.
-        nu_0 (array): Transition frequencies in s^-1.
-        gamma (array, optional): Line widths.
+        Args:
+            P (float): Pressure in Pa.
+            T (float): Temperature in Kelvin.
+            nu_0 (array): Transition frequencies in s^-1.
+            gamma (array, optional): Line widths.
 
         Returns:
-        array: Modified transition frequencies or line widths.
+            array: Modified transition frequencies or line widths.
         """
         # Copy the nu_0 so that we can add a shift
         nu_0_static = nu_0.copy()
@@ -383,13 +385,13 @@ class Kurucz(LineByLine):
     
         return nu_0
 
-    def _read_transitions(self, input_file, **kwargs):
+    def process_transitions(self, input_file, **kwargs):
         """
         Read transitions from the input file and compute cross-sections.
 
-        Parameters:
-        input_file (str): Path to the input file.
-        **kwargs: Additional arguments.
+        Args:
+            input_file (str): Path to the input file.
+            **kwargs: Additional arguments.
         """
         input_file = pathlib.Path(input_file)
         print(f'  Reading transitions from \"{input_file}\"')

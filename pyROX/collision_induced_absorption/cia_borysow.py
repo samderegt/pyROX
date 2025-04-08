@@ -3,20 +3,20 @@ from scipy.interpolate import interp1d
 
 import pathlib
 
-from pyROX.utils import sc
+from pyROX import sc
 from .cia import CIA
 
 class CIA_Borysow(CIA):
     """
-    Class for handling CIA data from Borysow.
+    Class for handling Collision-Induced Absorption (CIA) data from Borysow.
     """
     def __init__(self, config, **kwargs):
         """
-        Initialize the CIA_Borysow object.
+        Initialises the CIA_Borysow object.
 
-        Parameters:
-        config (object): Configuration object containing settings and file paths.
-        **kwargs: Additional arguments for initialization.
+        Args:
+            config (object): Configuration object containing settings and file paths.
+            **kwargs: Additional arguments for initialisation.
         """
         
         print('-'*60)
@@ -27,16 +27,16 @@ class CIA_Borysow(CIA):
 
     def _read_absorption_coefficients(self, file):
         """
-        Read absorption coefficients from a Borysow CIA file.
+        Reads absorption coefficients from a Borysow CIA file.
 
-        Parameters:
-        file (str): Path to the Borysow CIA file.
+        Args:
+            file (str): Path to the Borysow CIA file.
 
         Returns:
-        tuple: Temperature grid, absorption coefficients (k), and absorption coefficients (alpha).
+            tuple: Temperature grid, absorption coefficients (k), and absorption coefficients (alpha).
 
         Raises:
-        FileNotFoundError: If the specified file does not exist.
+            FileNotFoundError: If the specified file does not exist.
         """
 
         file = pathlib.Path(file)

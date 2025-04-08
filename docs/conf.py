@@ -6,7 +6,7 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'pyROX: Rapid Opacity X-sections'
+project = 'pyROX'
 copyright = '2025, Sam de Regt'
 author = 'Sam de Regt'
 release = '1.0'
@@ -15,11 +15,14 @@ release = '1.0'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-    'sphinx.ext.autodoc',
+    'autoapi',
     'sphinx.ext.napoleon',
     'sphinx.ext.viewcode',
     'nbsphinx',
 ]
+autoapi_type = 'python'
+autoapi_dirs = ['../pyROX']
+
 
 templates_path = ['_templates']
 exclude_patterns = ['**.ipynb_checkpoints']

@@ -2,38 +2,38 @@ import numpy as np
 import pathlib
 import itertools
 
-from pyROX.utils import sc
-from pyROX import utils
+from pyROX import utils, sc
 
 def load_data_object(config, **kwargs):
     """
     Load the data object based on the given configuration.
 
-    Parameters:
-    config (object): Configuration object containing database information.
-    **kwargs: Additional arguments to pass to the data object.
+    Args:
+        config (object): Configuration object containing database information.
+        **kwargs: Additional arguments to pass to the data object.
 
     Returns:
-    object: An instance of the appropriate data object based on the database type.
+        object: An instance of the appropriate data object based on the database type.
 
     Raises:
-    NotImplementedError: If the specified database is not implemented.
+        NotImplementedError: If the specified database is not implemented.
     """
     
     database = getattr(config, 'database', '').lower()
     
-    from pyROX import collision_induced_absorption, line_by_line
+    from pyROX import CIA_HITRAN, CIA_Borysow
     if database == 'cia_hitran':
-        return collision_induced_absorption.CIA_HITRAN(config, **kwargs)
+        return CIA_HITRAN(config, **kwargs)
     elif database == 'cia_borysow':
-        return collision_induced_absorption.CIA_Borysow(config, **kwargs)
+        return CIA_Borysow(config, **kwargs)
 
+    from pyROX import LBL_HITRAN, LBL_ExoMol, LBL_Kurucz
     if database == 'exomol':
-        return line_by_line.ExoMol(config, **kwargs)
+        return LBL_ExoMol(config, **kwargs)
     elif database in ['hitemp', 'hitran']:
-        return line_by_line.HITRAN(config, **kwargs)
+        return LBL_HITRAN(config, **kwargs)
     elif database in ['kurucz', 'vald']:
-        return line_by_line.Kurucz(config, **kwargs)
+        return LBL_Kurucz(config, **kwargs)
 
     raise NotImplementedError(f"Database '{config.database}' not implemented.")
 
@@ -44,27 +44,27 @@ class CrossSections:
     """
 
     @staticmethod
-    def mask_arrays(arrays, mask, **kwargs):
+    def _mask_arrays(arrays, mask, **kwargs):
         """
         Apply a mask to the given arrays.
 
-        Parameters:
-        arrays (list): List of arrays to mask.
-        mask (array-like): Boolean mask to apply.
-        **kwargs: Additional arguments for numpy.compress.
+        Args:
+            arrays (list): List of arrays to mask.
+            mask (array-like): Boolean mask to apply.
+            **kwargs: Additional arguments for numpy.compress.
 
         Returns:
-        list: List of masked arrays.
+            list: List of masked arrays.
         """
         return [np.compress(mask, array, **kwargs) for array in arrays]
 
     def __init__(self, config, download=False):
         """
-        Initialize the CrossSections object.
+        Initialises the CrossSections object.
 
-        Parameters:
-        config (object): Configuration object containing parameters.
-        download (bool): Whether to download data during initialization. Default is False.
+        Args:
+            config (object): Configuration object containing parameters.
+            download (bool, optional): Whether to download data during initialisation. Defaults to False.
         """
         self.database = config.database.lower()
         if download:
@@ -79,7 +79,7 @@ class CrossSections:
         Download data required for cross-section calculations.
 
         Raises:
-        NotImplementedError: This method should be implemented in a subclass.
+            NotImplementedError: This method should be implemented in a subclass.
         """
         raise NotImplementedError("This method should be implemented in the subclass.")
 
@@ -88,7 +88,7 @@ class CrossSections:
         Calculate temporary outputs for cross-sections.
 
         Raises:
-        NotImplementedError: This method should be implemented in a subclass.
+            NotImplementedError: This method should be implemented in a subclass.
         """
         raise NotImplementedError("This method should be implemented in the subclass.")
 
@@ -97,7 +97,7 @@ class CrossSections:
         Plot merged outputs for cross-sections.
 
         Raises:
-        NotImplementedError: This method should be implemented in a subclass.
+            NotImplementedError: This method should be implemented in a subclass.
         """
         raise NotImplementedError("This method should be implemented in the subclass.")
 
@@ -105,10 +105,10 @@ class CrossSections:
         """
         Combine temporary files and save the final output.
 
-        Parameters:
-        keys_to_merge (list): List of keys to combine.
-        overwrite (bool): Whether to overwrite the final output file if it exists. Default is False.
-        **kwargs: Additional arguments for merging.
+        Args:
+            keys_to_merge (list): List of keys to combine.
+            overwrite (bool, optional): Whether to overwrite the final output file if it exists. Defaults to False.
+            **kwargs: Additional arguments for merging.
         """
         print('\nCombining temporary files and saving final output')
 
@@ -138,13 +138,13 @@ class CrossSections:
         """
         Combine temporary output-files into a single dataset.
 
-        Parameters:
-        keys_to_merge (list): List of keys to read from the temporary files. 
-        **kwargs: Additional arguments for merging.
+        Args:
+            keys_to_merge (list): List of keys to read from the temporary files. 
+            **kwargs: Additional arguments for merging.
 
         Raises:
-        FileNotFoundError: If no temporary cross-section files are found.
-        ValueError: If the temperature grid is not found in a temporary file.
+            FileNotFoundError: If no temporary cross-section files are found.
+            ValueError: If the temperature grid is not found in a temporary file.
         """
 
         # Check if the outputs should be summed
@@ -233,15 +233,15 @@ class CrossSections:
         """
         Combine the PT-grids of the temporary files.
 
-        Parameters:
-        tmp_files (list): List of temporary files to combine.
-        sum_outputs (bool): Whether to sum the outputs.
+        Args:
+            tmp_files (list): List of temporary files to combine.
+            sum_outputs (bool): Whether to sum the outputs.
 
         Returns:
-        tuple: A tuple containing the main wavelength grid, pressure grid, and temperature grid.
+            tuple: A tuple containing the main wavelength grid, pressure grid, and temperature grid.
 
         Raises:
-        ValueError: If the PT grid is not rectangular or grids are incompatible.
+            ValueError: If the PT grid is not rectangular or grids are incompatible.
         """
         all_PT = []
         for i, tmp_file in enumerate(tmp_files):
@@ -258,7 +258,7 @@ class CrossSections:
                 raise ValueError("Temperature grid not found in temporary file.")
 
             if i == 0:
-                # Initialize the main arrays
+                # Initialise the main arrays
                 wave_main = wave.copy()
                 P_main = P.copy()
                 T_main = T.copy()
@@ -293,7 +293,7 @@ class CrossSections:
         Check if the cross-sections should be summed.
 
         Returns:
-        bool: True if the outputs should be summed, False otherwise.
+            bool: True if the outputs should be summed, False otherwise.
         """
         transitions_files = self.config.files.get('transitions', [])
         if not isinstance(transitions_files, (list, tuple, np.ndarray)):
@@ -306,12 +306,12 @@ class CrossSections:
         """
         Check if the output files already exist.
 
-        Parameters:
-        input_files (list): List of input file paths.
-        overwrite_all (bool): Whether to overwrite all existing files.
+        Args:
+            input_files (list): List of input file paths.
+            overwrite_all (bool): Whether to overwrite all existing files.
 
         Returns:
-        list: List of output file paths.
+            list: List of output file paths.
         """
         output_files = []
         for i, input_file in enumerate(input_files):
@@ -348,11 +348,11 @@ class CrossSections:
         """
         Read parameters from the configuration object.
 
-        Parameters:
-        config (object): Configuration object containing parameters.
+        Args:
+            config (object): Configuration object containing parameters.
 
         Raises:
-        ValueError: If no input-data files are specified in the configuration.
+            ValueError: If no input-data files are specified in the configuration.
         """
         print('\nReading parameters from the configuration file')
         self.config = config
@@ -481,11 +481,11 @@ class CrossSections:
         """
         Configure a coarse wavenumber grid for adaptive calculations.
 
-        Parameters:
-        adaptive_delta_nu (float): Desired resolution for the coarse grid.
+        Args:
+            adaptive_delta_nu (float): Desired resolution for the coarse grid.
 
         Returns:
-        numpy.ndarray: Coarse wavenumber grid.
+            numpy.ndarray: Coarse wavenumber grid.
         """
         # Use the original grid
         if not self.adaptive_nu_grid:

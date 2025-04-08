@@ -24,15 +24,15 @@ warnings.showwarning = lambda m, c, f, l, *_: print(f'{f}:{l} {c.__name__}: {m}'
 
 def download(url, out_dir, out_name=None):
     """
-    Download a file from a URL if it does not already exist.
+    Downloads a file from a URL if it does not already exist.
 
-    Parameters:
-    url (str): URL of the file to download.
-    out_dir (str): Output directory.
-    out_name (str): Output file name.
+    Args:
+        url (str): URL of the file to download.
+        out_dir (str): Output directory.
+        out_name (str, optional): Output file name. Defaults to None.
 
     Returns:
-    str: Path to the downloaded file.
+        str: Path to the downloaded file.
     """
 
     # Ensure the output directory exists
@@ -78,12 +78,14 @@ def download(url, out_dir, out_name=None):
 
 def save_to_hdf5(file, data, attrs, compression='gzip', **kwargs):
     """
-    Save data to an HDF5 file.
+    Saves data to an HDF5 file.
 
-    Parameters:
-    file (str): Path to the output file.
-    data (dict): Dictionary containing the data to save.
-    attrs (dict): Dictionary containing the attributes to save.
+    Args:
+        file (str): Path to the output file.
+        data (dict): Dictionary containing the data to save.
+        attrs (dict): Dictionary containing the attributes to save.
+        compression (str, optional): Compression type. Defaults to 'gzip'.
+        **kwargs: Additional arguments for dataset creation.
     """
     # Make sure the output directory exists
     pathlib.Path(file).parent.mkdir(parents=True, exist_ok=True)
@@ -107,13 +109,16 @@ def save_to_hdf5(file, data, attrs, compression='gzip', **kwargs):
 
 def read_from_hdf5(file, keys_to_read, return_attrs=False):
     """
-    Read data from an HDF5 file.
+    Reads data from an HDF5 file.
 
-    Parameters:
-    file (str): Path to the input file.
+    Args:
+        file (str): Path to the input file.
+        keys_to_read (list): List of keys to read from the file.
+        return_attrs (bool, optional): Whether to return attributes. Defaults to False.
 
     Returns:
-    dict: Dictionary containing the data.
+        dict: Dictionary containing the data.
+        dict (optional): Dictionary containing the attributes if return_attrs is True.
     """
 
     datasets, datasets_attrs = {}, {}
@@ -131,20 +136,23 @@ def read_from_hdf5(file, keys_to_read, return_attrs=False):
 
 def log10_round(array, decimals=3):
     """
-    Compute the base-10 logarithm of an array and round the result to save memory.
+    Computes the base-10 logarithm of an array and rounds the result.
 
-    Parameters:
-    array (array-like): Input array for which the logarithm is computed.
-    decimals (int): Number of decimal places to round to (default is 3).
+    Args:
+        array (array-like): Input array.
+        decimals (int, optional): Number of decimal places to round to. Defaults to 3.
 
     Returns:
-    numpy.ndarray: Array with the base-10 logarithm values rounded to the specified decimals.
+        numpy.ndarray: Array with rounded base-10 logarithm values.
     """
     return np.around(np.log10(array), decimals=decimals)
 
 def display_welcome_message():
     """
-    Display a welcome message.
+    Displays a welcome message.
+
+    Returns:
+        float: Start time of the process.
     """
     print('\n'+'='*80)
     print('  Welcome to pyROX: Rapid Opacity X-sections for Python')
@@ -154,10 +162,10 @@ def display_welcome_message():
 
 def display_finish_message(time_start):
     """
-    Display a finish message and the elapsed time.
+    Displays a finish message and the elapsed time.
 
-    Parameters:
-    time_start (float): Start time of the process.
+    Args:
+        time_start (float): Start time of the process.
     """
     time_finish = time.time()
     time_elapsed = time_finish - time_start
@@ -167,14 +175,14 @@ def display_finish_message(time_start):
 
 def update_config_with_args(config=None, **kwargs):
     """
-    Update the configuration object with command-line arguments.
+    Updates the configuration object with command-line arguments.
 
-    Parameters:
-    config (object): Configuration object to update.
-    kwargs (dict): Keyword arguments representing the parameters to update.
+    Args:
+        config (object, optional): Configuration object to update. Defaults to None.
+        **kwargs: Keyword arguments representing the parameters to update.
 
     Returns:
-    object: Updated configuration object.
+        object: Updated configuration object.
     """
     print('\nUpdating configuration with new parameters')
 
@@ -206,10 +214,10 @@ def update_config_with_args(config=None, **kwargs):
 
 def warn_about_units(config):
     """
-    Display a warning message about expected units for specific parameters.
+    Displays a warning message about expected units for specific parameters.
 
-    Parameters:
-    config (object): Configuration object containing parameter definitions.
+    Args:
+        config (object): Configuration object containing parameter definitions.
     """
     default_units = {
         'mass': 'amu',
@@ -241,7 +249,14 @@ def warn_about_units(config):
 
 def find_closest_indices(a, b):
     """
-    Find the indices of the closest elements in arrays a and b.
+    Finds the indices of the closest elements in arrays a and b.
+
+    Args:
+        a (array-like): First array.
+        b (array-like): Second array.
+
+    Returns:
+        tuple: Indices of the closest elements in a and b.
     """
     a_is_array = isinstance(a, (list, tuple, np.ndarray))
     b_is_array = isinstance(b, (list, tuple, np.ndarray))
@@ -254,16 +269,15 @@ def find_closest_indices(a, b):
 
 def fixed_resolution_wavelength_grid(wave_min, wave_max, resolution):
     """
-    Adopted from petitRADTRANS. 
-    Return a fixed resolution wavelength grid.
+    Returns a fixed resolution wavelength grid.
 
-    Parameters:
-    wave_min (float): Minimum wavelength.
-    wave_max (float): Maximum wavelength.
-    resolution (float): Desired resolution.
+    Args:
+        wave_min (float): Minimum wavelength.
+        wave_max (float): Maximum wavelength.
+        resolution (float): Desired resolution.
 
     Returns:
-    numpy.ndarray: Wavelength grid.
+        numpy.ndarray: Wavelength grid.
     """
 
     # Get maximum space length (much higher than required)
@@ -291,17 +305,17 @@ class Broaden_Gharib_Nezhad_ea_2021:
     Broadening parameterisation from Gharib-Nezhad et al. (2021).
     """
 
-    def pade_equation(self, J, a, b):
+    def _pade_equation(self, J, a, b):
         """
-        Pade approximation for the broadening coefficient.
+        Computes the Pade approximation for the broadening coefficient.
 
-        Parameters:
-        J (float): Rotational quantum number.
-        a (array-like): Coefficients for the numerator.
-        b (array-like): Coefficients for the denominator.
+        Args:
+            J (float): Rotational quantum number.
+            a (array-like): Coefficients for the numerator.
+            b (array-like): Coefficients for the denominator.
 
         Returns:
-        float: Broadening coefficient.
+            float: Broadening coefficient.
         """
         numerator = a[0] + a[1]*J + a[2]*J**2 + a[3]*J**3
         denominator = 1 + b[0]*J + b[1]*J**2 + b[2]*J**3 + b[3]*J**4
@@ -310,10 +324,10 @@ class Broaden_Gharib_Nezhad_ea_2021:
 
     def __init__(self, species='AlH'):
         """
-        Initialise the broadening parameters for a given species.
+        Initialises the broadening parameters for a given species.
 
-        Parameters:
-        species (str): Name of the species.
+        Args:
+            species (str): Name of the species.
         """
         
         if species in ['AlH']:
@@ -351,24 +365,24 @@ class Broaden_Gharib_Nezhad_ea_2021:
     
     def gamma_H2(self, J):
         """
-        Calculate the broadening coefficient for H2.
+        Calculates the broadening coefficient for H2.
 
-        Parameters:
-        J (float): Rotational quantum number.
+        Args:
+            J (float): Rotational quantum number.
 
         Returns:
-        float: Broadening coefficient.
+            float: Broadening coefficient.
         """
-        return self.pade_equation(J, a=self.a_H2, b=self.b_H2) # [s^-1]
+        return self._pade_equation(J, a=self.a_H2, b=self.b_H2) # [s^-1]
     
     def gamma_He(self, J):
         """
-        Calculate the broadening coefficient for He.
+        Calculates the broadening coefficient for He.
 
-        Parameters:
-        J (float): Rotational quantum number.
+        Args:
+            J (float): Rotational quantum number.
 
         Returns:
-        float: Broadening coefficient.
+            float: Broadening coefficient.
         """
-        return self.pade_equation(J, a=self.a_He, b=self.b_He) # [s^-1]
+        return self._pade_equation(J, a=self.a_He, b=self.b_He) # [s^-1]

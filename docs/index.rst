@@ -46,11 +46,13 @@ If you used pyROX for your research, please cite the following paper:
    PLACEHOLDER
    
 
-Guide
------
+.. toctree::
+   :maxdepth: 2
+   :caption: Guide
+
+   tutorial
+   parallelisation
 
 .. toctree::
    :maxdepth: 2
-
-   tutorial
-   api/modules
+   :caption: Code documentation

@@ -3,7 +3,7 @@ from scipy.interpolate import interp1d
 
 import pathlib
 
-from pyROX.utils import sc
+from pyROX import sc
 from .cia import CIA
 
 class CIA_HITRAN(CIA):
@@ -12,11 +12,11 @@ class CIA_HITRAN(CIA):
     """    
     def __init__(self, config, **kwargs):
         """
-        Initialize the CIA_HITRAN object.
+        Initialise the CIA_HITRAN object.
 
-        Parameters:
-        config (object): Configuration object containing settings and file paths.
-        **kwargs: Additional arguments for initialization.
+        Args:
+            config (object): Configuration object containing settings and file paths.
+            **kwargs: Additional arguments for initialisation.
         """
 
         print('-'*60)
@@ -27,16 +27,16 @@ class CIA_HITRAN(CIA):
 
     def _read_absorption_coefficients(self, file):
         """
-        Read absorption coefficients from a HITRAN CIA file.
+        Reads absorption coefficients from a HITRAN CIA file.
 
-        Parameters:
-        file (str): Path to the HITRAN CIA file.
+        Args:
+            file (str): Path to the HITRAN CIA file.
 
         Returns:
-        tuple: Temperature grid, absorption coefficients (k), and absorption coefficients (alpha).
+            tuple: Temperature grid, absorption coefficients (k), and absorption coefficients (alpha).
 
         Raises:
-        FileNotFoundError: If the specified file does not exist.
+            FileNotFoundError: If the specified file does not exist.
         """
 
         file = pathlib.Path(file)
