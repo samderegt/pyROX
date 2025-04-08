@@ -8,7 +8,7 @@ examples/*/*.hdf5
 
 pyROX.egg-info/
 
-docs/build/
+docs/_build/
 
 convert_all.ipynb
 *.code-workspace

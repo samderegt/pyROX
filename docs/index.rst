@@ -50,4 +50,6 @@ Guide
    :maxdepth: 2
    :caption: Guide:
 
-   ../notebooks/getting_started.ipynb
+   notebooks/getting_started
+   notebooks/convert_to_pRT3
+   notebooks/broadening_comparison

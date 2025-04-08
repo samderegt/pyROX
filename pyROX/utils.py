@@ -162,10 +162,24 @@ def display_finish_message(time_start):
     print('\nTime elapsed: {}'.format(str(datetime.timedelta(seconds=time_elapsed))))
     print('='*80+'\n')
 
-def update_config_with_args(config, **kwargs):
+def update_config_with_args(config=None, **kwargs):
     """
     Update the configuration object with command-line arguments.
+
+    Parameters:
+    config (object): Configuration object to update.
+    kwargs (dict): Keyword arguments representing the parameters to update.
+
+    Returns:
+    object: Updated configuration object.
     """
+    print('\nUpdating configuration with new parameters')
+
+    if config is None:
+        class Config:
+            pass
+        config = Config()
+
     for key, value in kwargs.items():
         if value is None:
             continue  # Parameter not given

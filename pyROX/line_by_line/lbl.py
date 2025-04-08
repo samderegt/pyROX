@@ -435,6 +435,7 @@ class LineByLine(CrossSections, LineProfileHelper):
 
             # Add mass to the perturber_info dictionary if it doesn't exist
             mass = info.get('mass', None)
+            
             if perturber == 'H2' and mass is None:
                 mass = sc.m_H2 / sc.amu
             elif perturber == 'He' and mass is None:
