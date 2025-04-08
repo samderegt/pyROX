@@ -1,3 +1,4 @@
 nbsphinx
 jupyter
 sphinx_book_theme
+sphinx_autoapi
