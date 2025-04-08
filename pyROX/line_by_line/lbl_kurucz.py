@@ -3,10 +3,9 @@ from pandas import read_fwf, read_csv
 from scipy.interpolate import interp1d
 
 import pathlib
-import re
 
-from utils import sc
-import utils
+from pyROX.utils import sc
+from pyROX import utils
 from .lbl import LineByLine
 
 class Kurucz(LineByLine):

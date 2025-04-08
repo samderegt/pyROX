@@ -6,6 +6,8 @@ examples/*/*.pdf
 examples/*/*.h5
 examples/*/*.hdf5
 
+pyROX.egg-info/
+
 docs/build/
 
 convert_all.ipynb

@@ -2,8 +2,8 @@ import numpy as np
 from pandas import read_fwf
 import pathlib
 
-from utils import sc
-import utils
+from pyROX.utils import sc
+from pyROX import utils
 from .lbl import LineByLine
 
 class HITRAN(LineByLine):

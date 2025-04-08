@@ -3,16 +3,51 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-pyROX: Rapid Opacity X-sections documentation
-=============================================
+pyROX: Rapid Opacity X-sections
+===============================
 
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
+Welcome to the pyROX documentation. pyROX is a Python package for calculating
+opacity cross-sections for sub-stellar atmospheres. It can handle line-by-line
+opacities using various databases (ExoMol, HITRAN, Kurucz) and also supports
+the calculation of collision-induced absorption.
 
+
+Installation
+------------
+
+To install pyROX, clone the `repository from GitHub <https://github.com/samderegt/pyROX>`_:
+.. code-block:: bash
+
+   git clone https://github.com/samderegt/pyROX
+
+Next, navigate to the cloned directory and install the package using pip:
+.. code-block:: bash
+
+   cd pyROX
+   pip install -e .
+
+The ``-e`` will install pyROX in editable mode, allowing you to make changes to the
+source code and see them reflected in your Python environment immediately.
+
+
+License and Acknowledgements
+----------------------------
+pyROX is licensed under the `MIT License <https://github.com/samderegt/pyROX/LICENSE>`_. 
+
+The package is developed and maintained by Sam de Regt, with contributions from
+Siddharth Gandhi, Louis Siebenaler, and Dario Gonzalez Picos.
+
+If you used pyROX for your research, please cite the following paper:
+.. code-block:: bibtex
+
+   PLACEHOLDER
+   
+
+Guide
+-----
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Guide:
 
-   ../notebooks/calculate_lbl_feh.ipynb
+   ../notebooks/getting_started.ipynb

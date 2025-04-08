@@ -1,17 +1,16 @@
 import numpy as np
-from pandas import read_fwf, read_csv
+from pandas import read_fwf
 from scipy.interpolate import interp1d
 from scipy.special import wofz
 
 import pathlib
 import datetime
-import re
 
 from tqdm import tqdm
 
-from cross_sections import CrossSections
-from utils import sc
-import utils
+from pyROX.cross_sections import CrossSections
+from pyROX.utils import sc
+from pyROX import utils
 
 class LineProfileHelper:
 
@@ -692,11 +691,12 @@ class LineByLine(CrossSections, LineProfileHelper):
         """
         super().save_combined_outputs(keys_to_merge=['log10(xsec)'], **kwargs)
 
-    def plot_combined_outputs(self, cmaps=['coolwarm','viridis'], xscale='log', yscale='log', xlim=None, ylim=None, **kwargs):
+    def plot_combined_outputs(self, return_fig_ax=False, cmaps=['coolwarm','viridis'], xscale='log', yscale='log', xlim=None, ylim=None, **kwargs):
         """
         Plot the merged outputs.
 
         Parameters:
+        return_fig_ax (bool): Whether to return the figure and axes.
         cmaps (list): List of colormaps for plotting.
         xscale (str): Scale for the x-axis.
         yscale (str): Scale for the y-axis.
@@ -778,6 +778,9 @@ class LineByLine(CrossSections, LineProfileHelper):
         ax[0].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, ylabel='xsec [cm^2 molecule^-1]')
         ax[1].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, xlabel='wavelength [um]', ylabel='xsec [cm^2 molecule^-1]')
 
+        if return_fig_ax:
+            return fig, ax
+        # Otherwise save the figure
         plt.savefig(self.output_data_dir / 'xsec.pdf', bbox_inches='tight')
         plt.close()
 

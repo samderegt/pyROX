@@ -1,11 +1,10 @@
 import numpy as np
 
-import pathlib
 import datetime
 
-from utils import sc
-import utils
-from cross_sections import CrossSections
+from pyROX.utils import sc
+from pyROX import utils
+from pyROX.cross_sections import CrossSections
 
 class CIA(CrossSections):
     """
@@ -120,11 +119,12 @@ class CIA(CrossSections):
         """
         super().save_combined_outputs(keys_to_merge=['log10(k)','log10(alpha)'], **kwargs)
 
-    def plot_combined_outputs(self, cmap='coolwarm', xscale='log', yscale='log', xlim=None, ylim=None, **kwargs):
+    def plot_combined_outputs(self, return_fig_ax=False, cmap='coolwarm', xscale='log', yscale='log', xlim=None, ylim=None, **kwargs):
         """
         Plot the merged CIA coefficients.
 
         Parameters:
+        return_fig_ax (bool): Whether to return the figure and axes objects.
         cmap (str): Colormap for the plot.
         xscale (str): Scale for the x-axis ('linear' or 'log').
         yscale (str): Scale for the y-axis ('linear' or 'log').
@@ -169,6 +169,9 @@ class CIA(CrossSections):
         ncols = 1 + len(handles)//8
         ax[0].legend(loc='upper right', ncol=ncols, labelcolor='linecolor')
 
+        if return_fig_ax:
+            return fig, ax
+        # Otherwise save the figure
         plt.savefig(self.output_data_dir / 'cia_coeffs.pdf', bbox_inches='tight')
         plt.close()
     

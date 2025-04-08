@@ -21,7 +21,7 @@ files = dict(
 )
 
 # Pressure-broadening information
-from utils import Broaden_Gharib_Nezhad_ea_2021 as B
+from pyROX.utils import Broaden_Gharib_Nezhad_ea_2021 as B
 perturber_info = dict(
     H2 = dict(
         #VMR=0.85, gamma=B('FeH').gamma_H2, n=0.5

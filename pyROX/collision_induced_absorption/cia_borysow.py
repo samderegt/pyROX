@@ -3,7 +3,7 @@ from scipy.interpolate import interp1d
 
 import pathlib
 
-from utils import sc
+from pyROX.utils import sc
 from .cia import CIA
 
 class CIA_Borysow(CIA):

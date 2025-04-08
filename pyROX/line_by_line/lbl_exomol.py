@@ -4,8 +4,8 @@ from pandas import read_fwf
 import pathlib
 import re
 
-from utils import sc
-import utils
+from pyROX.utils import sc
+from pyROX import utils
 from .lbl import LineByLine
 
 class ExoMol(LineByLine):

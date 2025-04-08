@@ -2,8 +2,8 @@ import numpy as np
 import pathlib
 import itertools
 
-from utils import sc
-import utils
+from pyROX.utils import sc
+from pyROX import utils
 
 def load_data_object(config, **kwargs):
     """
@@ -21,8 +21,8 @@ def load_data_object(config, **kwargs):
     """
     
     database = getattr(config, 'database', '').lower()
-
-    import collision_induced_absorption, line_by_line
+    
+    from pyROX import collision_induced_absorption, line_by_line
     if database == 'cia_hitran':
         return collision_induced_absorption.CIA_HITRAN(config, **kwargs)
     elif database == 'cia_borysow':
