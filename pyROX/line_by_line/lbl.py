@@ -494,11 +494,11 @@ class LineByLine(CrossSections, LineProfileHelper):
             self.pressure_broadening_info[perturber]['J'] = \
                 np.array(broadening_params[3])[mask_diet]
 
-        print(f'  Pressure broadening info:')
+        print('\nPressure broadening info:')
         self.mean_mass, VMR_total = 0., 0.
         for perturber, info in self.pressure_broadening_info.items():
             VMR, mass, method = info['VMR'], info['mass'], info['method']
-            print(f'    - {perturber}: VMR={VMR:.2f}, mass={mass/sc.amu:.2f} amu | {method}')
+            print(f'  - {perturber}: VMR={VMR:.2f}, mass={mass/sc.amu:.2f} amu | {method}')
             self.mean_mass += info['VMR']*info['mass'] # [kg]
             VMR_total += info['VMR']
 

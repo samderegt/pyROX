@@ -19,6 +19,9 @@ sc.m_H2 = 2.01588*sc.amu  # [kg]
 sc.m_He = 4.002602*sc.amu # [kg]
 sc.alpha_H = 0.666793e-30 # Polarisability [m^3]
 
+# Set up custom warning message
+warnings.showwarning = lambda m, c, f, l, *_: print(f'{f}:{l} {c.__name__}: {m}')
+
 def download(url, out_dir, out_name=None):
     """
     Download a file from a URL if it does not already exist.
@@ -214,11 +217,13 @@ def warn_about_units(config):
         'T_grid': 'K',
         'wave_min': 'um',
         'wave_max': 'um',
+        'nu_min': 'cm^-1',
+        'nu_max': 'cm^-1',
         'delta_wave': 'um',
         'delta_nu': 'cm^-1',
         'wave_file': 'um',
         'wing_cutoff': 'cm^-1',
-        'global_cutoff': 'cm^1 molecule^-1',
+        'global_cutoff': 'cm^-1 / (molecule cm^-2)',
     }
 
     keys_units_to_warn = []

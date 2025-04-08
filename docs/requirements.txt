@@ -1,3 +1,3 @@
 nbsphinx
 jupyter
-furo
+sphinx_book_theme

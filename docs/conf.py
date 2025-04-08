@@ -17,6 +17,7 @@ release = '1.0'
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
+    'sphinx.ext.viewcode',
     'nbsphinx',
 ]
 
@@ -28,5 +29,5 @@ exclude_patterns = ['**.ipynb_checkpoints']
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'furo'
+html_theme = 'sphinx_book_theme'
 html_static_path = ['_static']

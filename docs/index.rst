@@ -16,11 +16,13 @@ Installation
 ------------
 
 To install pyROX, clone the `repository from GitHub <https://github.com/samderegt/pyROX>`_:
+
 .. code-block:: bash
 
    git clone https://github.com/samderegt/pyROX
 
 Next, navigate to the cloned directory and install the package using pip:
+
 .. code-block:: bash
 
    cd pyROX
@@ -38,6 +40,7 @@ The package is developed and maintained by Sam de Regt, with contributions from
 Siddharth Gandhi, Louis Siebenaler, and Dario Gonzalez Picos.
 
 If you used pyROX for your research, please cite the following paper:
+
 .. code-block:: bibtex
 
    PLACEHOLDER
@@ -51,5 +54,3 @@ Guide
    :caption: Guide:
 
    notebooks/getting_started
-   notebooks/convert_to_pRT3
-   notebooks/broadening_comparison
