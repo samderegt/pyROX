@@ -703,28 +703,36 @@ class LineByLine(CrossSections, LineProfileHelper):
         """
         super().save_combined_outputs(keys_to_merge=['log10(xsec)'], **kwargs)
 
-    def plot_combined_outputs(self, return_fig_ax=False, cmaps=['coolwarm','viridis'], xscale='log', yscale='log', xlim=None, ylim=None, **kwargs):
+    def plot_combined_outputs(self, fig=None, ax=None, return_fig_ax=False, cmaps=['coolwarm','viridis'], xscale='log', yscale='log', xlim=None, ylim=None, ls='-', lw=0.7, **kwargs):
         """
         Plots the merged outputs.
 
         Args:
+            fig (matplotlib.figure.Figure): Figure object for plotting.
+            ax (matplotlib.axes.Axes): Axes object for plotting.
             return_fig_ax (bool): Whether to return the figure and axes.
             cmaps (list): List of colormaps for plotting.
             xscale (str): Scale for the x-axis.
             yscale (str): Scale for the y-axis.
             xlim (tuple, optional): Limits for the x-axis.
             ylim (tuple, optional): Limits for the y-axis.
+            ls (str): Line style for plotting.
             **kwargs: Additional arguments for plotting.
         """
         
-        print('\nPlotting cross-sections')
+        import matplotlib.pyplot as plt
+        if (fig is None) or (ax is None):
+            # Make a new figure
+            fig, ax = plt.subplots(figsize=(9,6), nrows=2, sharex=True, sharey=True)
+            
+            print('\nPlotting cross-sections')
 
         self.combined_datasets = utils.read_from_hdf5(
             self.final_output_file, keys_to_read=['wave', 'P', 'T', 'log10(xsec)']
         )
         wave = self.combined_datasets['wave'] * 1e6 # [m] -> [um]
         xsec = 10**self.combined_datasets['log10(xsec)'] * (1e2)**2
-        #xsec *= 1/(self.mass*1e3)
+        P_grid = self.combined_datasets['P'] / sc.bar # [Pa] -> [bar]
 
         # Avoid plotting the whole dataset
         if xlim is None:
@@ -732,49 +740,52 @@ class LineByLine(CrossSections, LineProfileHelper):
         xsec = xsec[(wave>=xlim[0]) & (wave<=xlim[1])]
         wave = wave[(wave>=xlim[0]) & (wave<=xlim[1])]
 
-        import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(figsize=(9,6), nrows=2, sharex=True, sharey=True)
-
         # Plot for certain temperatures
         T_to_plot = kwargs.get('T_to_plot', self.combined_datasets['T'])
         indices_T, T_to_plot = utils.find_closest_indices(self.combined_datasets['T'], T_to_plot)
         indices_T = np.unique(indices_T)
         T_to_plot = np.unique(T_to_plot)
 
-        idx_P = np.searchsorted(self.combined_datasets['P'], 1e5) # 1 bar
-        idx_P = np.minimum(idx_P, len(self.combined_datasets['P'])-1)
+        idx_P = np.searchsorted(P_grid, 1) # 1 bar
+        idx_P = np.minimum(idx_P, len(P_grid)-1)
 
         for idx_T, T in zip(indices_T, T_to_plot):
-            if len(T_to_plot)==1:
-                c = plt.get_cmap(cmaps[0])(0.4)
-            else:
-                c = plt.get_cmap(cmaps[0])((T-T_to_plot.min())/(T_to_plot.max()-T_to_plot.min()))
+            idx_c = 0.3
+            if len(T_to_plot)>1:
+                idx_c = (T-T_to_plot.min())/(T_to_plot.max()-T_to_plot.min())
 
-            ax[0].plot(wave, xsec[:,idx_P,idx_T], c=c, lw=0.7, label=f'T={T:.0f} K')
+            cmap = cmaps[0]
+            if isinstance(cmap, str):
+                cmap = plt.get_cmap(cmap)
+
+            ax[0].plot(wave, xsec[:,idx_P,idx_T], c=cmap(idx_c), lw=lw, ls=ls, label=f'T={T:.0f} K')
 
         handles, _ = ax[0].get_legend_handles_labels()
         ncols = 1 + len(handles)//8
         ax[0].legend(
             loc='upper right', ncol=ncols, labelcolor='linecolor', handlelength=0.5, 
-            title=f'P={self.combined_datasets["P"][idx_P]/sc.bar:.0e} bar',
+            title=f'P={P_grid[idx_P]:.0e} bar',
             )
 
         # Plot for certain pressures
-        P_to_plot = kwargs.get('P_to_plot', self.combined_datasets['P'])
-        indices_P, P_to_plot = utils.find_closest_indices(self.combined_datasets['P'], P_to_plot)
+        P_to_plot = kwargs.get('P_to_plot', P_grid) # [bar]
+        indices_P, P_to_plot = utils.find_closest_indices(P_grid, P_to_plot)
         indices_P = np.unique(indices_P)
         P_to_plot = np.unique(P_to_plot)
 
         idx_T = np.searchsorted(self.combined_datasets['T'], 1000.)
         idx_T = np.minimum(idx_T, len(self.combined_datasets['T'])-1)
 
-        for idx_P, P in zip(indices_P, P_to_plot):
-            if len(P_to_plot)==1:
-                c = plt.get_cmap(cmaps[1])(0.5)
-            else:
-                c = plt.get_cmap(cmaps[1])(np.log10(P/P_to_plot.min())/np.log10(P_to_plot.max()/P_to_plot.min()))
+        for idx_P, P in zip(indices_P, P_to_plot):   
+            idx_c = 0.5
+            if len(P_to_plot)>1:
+                idx_c = np.log10(P/P_to_plot.min())/np.log10(P_to_plot.max()/P_to_plot.min())
+            
+            cmap = cmaps[1]
+            if isinstance(cmap, str):
+                cmap = plt.get_cmap(cmap)
 
-            ax[1].plot(wave, xsec[:,idx_P,idx_T], c=c, lw=0.7, label=f'P={P/sc.bar:.0e} bar')
+            ax[1].plot(wave, xsec[:,idx_P,idx_T], c=cmap(idx_c), lw=lw, ls=ls, label=f'P={P:.0e} bar')
 
         handles, _ = ax[1].get_legend_handles_labels()
         ncols = 1 + len(handles)//8

@@ -27,6 +27,7 @@ autoapi_dirs = ['../pyROX']
 templates_path = ['_templates']
 exclude_patterns = ['**.ipynb_checkpoints']
 
+pygments_style = 'monokai'
 
 
 # -- Options for HTML output -------------------------------------------------

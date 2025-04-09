@@ -6,6 +6,6 @@ Tutorial
    :maxdepth: 2
 
    notebooks/getting_started
-   notebooks/broadening_comparison
+   notebooks/pressure_broadening
    notebooks/database_differences
    notebooks/collision_induced_absorption

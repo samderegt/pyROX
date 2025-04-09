@@ -89,8 +89,7 @@ def main():
     if args.plot:
         data.plot_combined_outputs(
             T_to_plot=[100,200,500,1000,2000,3000], 
-            P_to_plot=[1e3,1e5,1e7], # 1e-2, 1, 100 bar
-            #xscale='linear', xlim=(0.3, 5)
+            P_to_plot=[1e-2,1,1e2], # [bar]
         )
 
     # Optional conversions to petitRADTRANS format

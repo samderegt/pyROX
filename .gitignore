@@ -1,8 +1,6 @@
 __pycache__/
 
-examples/*/logs/
-examples/*/input_data/
-examples/*/tmp/
+examples/*/*/
 examples/*/*.pdf
 examples/*/*.h5
 examples/*/*.hdf5
