@@ -1,3 +1,9 @@
+import os
+import sys
+os.environ["PYTHONUNBUFFERED"] = "1" # Enable unbuffered output
+sys.stdout.reconfigure(line_buffering=True)
+
+import pathlib
 import argparse
 from pyROX import cross_sections, utils
 
@@ -51,6 +57,10 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Add the directory of the config file to the system path
+    config_dir = pathlib.Path(args.config_file).resolve().parent
+    sys.path.insert(0, str(config_dir))
 
     # Import input file as 'conf'
     config_string = str(args.config_file).replace('.py', '').replace('/', '.')

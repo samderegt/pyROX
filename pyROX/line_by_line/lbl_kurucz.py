@@ -421,7 +421,7 @@ class LBL_Kurucz(LineByLine):
         self.gamma_N_in_table   = gamma_N[idx_sort]
 
         # Compute the cross-sections, looping over the PT-grid
-        print(f'  Number of lines: {len(nu_0)}')
+        print(f'  Number of lines loaded: {len(A)}')
         self.iterate_over_PT_grid(
             function=self.calculate_cross_sections,
             nu_0=nu_0, S_0=S_0, E_low=E_low, A=A, **kwargs

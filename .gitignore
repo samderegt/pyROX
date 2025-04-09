@@ -1,5 +1,6 @@
 __pycache__/
 
+examples/*/logs/
 examples/*/input_data/
 examples/*/tmp/
 examples/*/*.pdf

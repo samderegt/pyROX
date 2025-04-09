@@ -550,8 +550,13 @@ class LineByLine(CrossSections, LineProfileHelper):
             for idx_P, P in enumerate(self.P_grid):
                 for idx_T, T in enumerate(self.T_grid):
 
-                    pbar.set_postfix(P='{:.0e} bar'.format(P*1e-5), T='{:.0f} K'.format(T), refresh=False)
                     function(P, T, **kwargs)
+                    postfix = {
+                        'P': f'{P*1e-5:.0e} bar', 'T': f'{T:.0f} K',
+                    }
+                    if hasattr(self, 'N_lines_computed'):
+                        postfix['N_lines_computed'] = '{}'.format(self.N_lines_computed)
+                    pbar.set_postfix(**postfix, refresh=False)
                     pbar.update(1)
     
     def calculate_cross_sections(self, P, T, nu_0, S_0, E_low, A, delta=None, **kwargs):
@@ -568,6 +573,8 @@ class LineByLine(CrossSections, LineProfileHelper):
             delta (array, optional): Pressure shift coefficients.
             **kwargs: Additional arguments.
         """
+        self.N_lines_computed = 0
+
         # Get the line-widths
         gamma_N   = self.compute_natural_broadening(A) # Lorentzian components
         gamma_vdW = self.compute_vdw_broadening(P, T, E_low=E_low, nu_0=nu_0)
@@ -600,6 +607,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         )
         if len(S) == 0:
             return # No more lines
+        self.N_lines_computed = len(S)
         
         # Change to a coarse grid if lines are substantially broadened
         gamma_V = self.compute_voigt_width(gamma_G, gamma_L) # Voigt width
@@ -663,7 +671,9 @@ class LineByLine(CrossSections, LineProfileHelper):
             self.process_transitions(input_file, **kwargs)
 
             if np.all(self.sigma == 0.):
-                continue # No lines in this file, no need to save
+                print(f'  No lines calculated, no need to save \"{tmp_output_file}\"')
+                continue
+            print(f'  Saving temporary cross-sections to \"{tmp_output_file}\"')
 
             self.sigma[(self.sigma == 0.)] = 1e-250
 

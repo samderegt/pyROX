@@ -232,8 +232,6 @@ class LBL_ExoMol(LineByLine):
                         break
 
                     # Compute when N_lines_in_chunk is reached
-                    print(f'  Number of lines: {len(A)}')
-
                     idx_l = np.searchsorted(self.states_ID, np.array(state_ID_low, dtype=int))
                     idx_u = np.searchsorted(self.states_ID, np.array(state_ID_up, dtype=int))
                     A = np.array(A, dtype=float)
@@ -273,6 +271,7 @@ class LBL_ExoMol(LineByLine):
                     self._read_broadening_per_transition(J_l, J_u)
 
                     # Compute the cross-sections, looping over the PT-grid
+                    print(f'  Number of lines loaded: {len(A)}')
                     self.iterate_over_PT_grid(
                         function=self.calculate_cross_sections,
                         nu_0=nu_0, S_0=S_0, E_low=E_low, A=A, **kwargs

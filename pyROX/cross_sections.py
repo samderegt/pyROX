@@ -195,27 +195,42 @@ class CrossSections:
                 idx_T = np.argwhere((T_main == PT[1])).flatten()[0]
 
                 for key in keys_to_merge:
+
+                    # Current data
+                    combined_data = self.combined_datasets[key][:,idx_P,idx_T]
                     
                     if not has_pressure_axis:
                         # Absorption coefficients
-                        dataset_to_add = datasets[key][:,k]
+                        data_to_add = datasets[key][:,k]
                     else:
                         # Line-by-line cross-sections
-                        dataset_to_add = datasets[key][:,j,k]
+                        data_to_add = datasets[key][:,j,k]
                     
                     if sum_outputs:
                         # Sum cross-sections
                         if key.startswith('log10('):
-                            # Logarithmic sum
-                            self.combined_datasets[key][:,idx_P,idx_T] = np.log10(
-                                10**self.combined_datasets[key][:,idx_P,idx_T]+10**dataset_to_add
-                            )
-                        else:
-                            # Linear sum
-                            self.combined_datasets[key][:,idx_P,idx_T] += dataset_to_add
+                            # Convert to linear scale
+                            data_to_add = 10**data_to_add
+
+                            if np.all(combined_data==0.):
+                                combined_data = combined_data # First file
+                            else:
+                                # Convert to linear scale
+                                combined_data = 10**combined_data
+                        
+                        # Add to existing data
+                        combined_data += data_to_add
+
+                        if key.startswith('log10('):
+                            # Convert back to log scale
+                            combined_data = np.log10(combined_data)
+
                     else:
                         # Avoid summing when only one transition file was used
-                        self.combined_datasets[key][:,idx_P,idx_T] = dataset_to_add
+                        combined_data = data_to_add
+
+                    # Store the combined data
+                    self.combined_datasets[key][:,idx_P,idx_T] = combined_data
 
         # Add the grid-definition
         self.combined_datasets['wave'] = wave_main
