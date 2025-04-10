@@ -5,6 +5,10 @@ examples/*/*.pdf
 examples/*/*.h5
 examples/*/*.hdf5
 
+examples/exomol_h2o/
+examples/exomol_feh/
+examples/kurucz_fe/
+
 pyROX.egg-info/
 
 docs/_build/
