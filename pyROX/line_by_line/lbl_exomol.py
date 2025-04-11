@@ -166,6 +166,7 @@ class LBL_ExoMol(LineByLine):
             with bz2.open(states_file, 'rb') as f:
                 first_line = f.readline()
         else:
+            compression = 'infer'
             with open(states_file, 'r') as f:
                 first_line = f.readline()
 
@@ -208,8 +209,14 @@ class LBL_ExoMol(LineByLine):
         is_end_of_file = False
 
         # Read the transitions file in chunks to prevent memory overloads
-        import bz2
-        with bz2.open(input_file) as f:
+        compression = str(input_file.suffix).replace('.','')
+        if compression == 'bz2':
+            import bz2
+            open_function = bz2.open
+        else:
+            open_function = open
+        
+        with open_function(input_file, 'rb') as f:
 
             while not is_end_of_file:
                 # Read the next line
@@ -287,5 +294,5 @@ class LBL_ExoMol(LineByLine):
                     A.append(
                         line[col_indices[1]:col_indices[2]] # Einstein A-coefficient [s^-1]
                         )
-
+                    
                 i += 1

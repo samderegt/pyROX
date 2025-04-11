@@ -55,4 +55,6 @@ If you used pyROX for your research, please cite the following paper:
 
 .. toctree::
    :maxdepth: 2
-   :caption: Code documentation
+   :caption: Code Documentation
+
+   GitHub <https://github.com/samderegt/pyROX>

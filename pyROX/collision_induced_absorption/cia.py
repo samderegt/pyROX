@@ -71,10 +71,6 @@ class CIA(CrossSections):
 
         self.T_grid, self.abs_coeff_k, self.abs_coeff_alpha = [], [], []
         for i, (file, masks) in enumerate(zip(cia_files, cia_masks)):
-            if isinstance(file, tuple):
-                file, *masks = file
-            else:
-                masks = []
 
             # Compute absorption coefficients
             T_grid, abs_coeff_k, abs_coeff_alpha = self._read_absorption_coefficients(file)
@@ -160,8 +156,8 @@ class CIA(CrossSections):
             ax[0].plot(wave, k[:,idx_T], c=c, label=f'{T:.0f} K')
             ax[1].plot(wave, alpha[:,idx_T], c=c)
 
-        ax[0].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, ylabel='k [cm^5 molecule^-2]')
-        ax[1].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, xlabel='wave [um]', ylabel='alpha [cm^-1 molecule^-2]')
+        ax[0].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, ylabel=r'k [cm$^5$ molecule$^{-2}$]')
+        ax[1].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, xlabel=r'Wavelength [$\mu$m]', ylabel=r'alpha [cm$^{-1}$ molecule$^{-2}$]')
 
         handles, _ = ax[0].get_legend_handles_labels()
         ncols = 1 + len(handles)//8
@@ -228,7 +224,18 @@ class CIA(CrossSections):
 
         wave_min = self.combined_datasets['wave'].min() / sc.micron
         wave_max = self.combined_datasets['wave'].max() / sc.micron
-        resolution = sc.c / sc.micron / self.delta_nu # Resolution at 1 um
+
+        resolution = self.resolution
+        if not np.isnan(self.delta_nu):
+            # Use the given delta_nu, resolution at 1 um
+            resolution = sc.c / sc.micron / self.delta_nu
+        elif not np.isnan(self.delta_wave):
+            # Use the given delta_wave, resolution at 1 um
+            resolution = sc.micron / self.delta_wave
+        if np.isnan(resolution):
+            idx = np.searchsorted(self.combined_datasets['wave'], 1e-6)
+            delta_wave = np.diff(self.combined_datasets['wave'][idx-1:idx+1])
+            resolution = self.combined_datasets['wave'][idx] / delta_wave
 
         # Fill the dictionary
         data['alpha'] = 1e-2 * 10**self.combined_datasets['log10(alpha)'][::-1,:].T # [m^-1 molecule^-2] -> [cm^-1 molecule^-2]

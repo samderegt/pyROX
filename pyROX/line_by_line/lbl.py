@@ -798,8 +798,8 @@ class LineByLine(CrossSections, LineProfileHelper):
             xsec[xsec<=1e-150] = np.nan
             ylim = (np.nanpercentile(xsec, 3), np.nanmax(xsec)*10)
 
-        ax[0].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, ylabel='xsec [cm^2 molecule^-1]')
-        ax[1].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, xlabel='wavelength [um]', ylabel='xsec [cm^2 molecule^-1]')
+        ax[0].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, ylabel=r'xsec [cm$^2$ molecule$^{-1}$]')
+        ax[1].set(xscale=xscale, yscale=yscale, xlim=xlim, ylim=ylim, xlabel=r'Wavelength [$\mu$m]', ylabel=r'xsec [cm$^2$ molecule$^{-1}$]')
 
         plt.savefig(self.output_data_dir / 'xsec.pdf', bbox_inches='tight')
         if return_fig_ax:
