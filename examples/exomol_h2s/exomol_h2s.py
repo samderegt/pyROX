@@ -1,5 +1,5 @@
 # Basic information on database and species
-database = 'exomol' # Can be ['exomol', 'hitran', 'hitemp', 'kurucz]
+database = 'exomol' # Can be ['exomol', 'hitran', 'hitemp', 'kurucz']
 species  = 'h2s'    # Species name
 mass = 33.987721    # Can be found in *.def.json file
 

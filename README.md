@@ -1,16 +1,32 @@
+[![Documentation Status](https://readthedocs.org/projects/py-rox/badge/?version=latest)](https://py-rox.readthedocs.io/en/latest/)
+[![License](https://img.shields.io/github/license/samderegt/pyROX)](https://github.com/samderegt/pyROX/blob/main/LICENSE)
+
 # pyROX: Rapid Opacity X-sections
+A Python package for computing opacity cross-sections and collision-induced absorption coefficients to be used in applications of (exo)-planetary and (sub)-stellar atmospheres. pyROX currently supports calculating opacities from the Kurucz, ExoMol, HITRAN/HITEMP and Borysow databases.
 
-A Python package for computing opacity cross-sections using line lists from Kurucz, ExoMol or HITRAN/HITEMP. In addition, the package supports calculations of collision-induced absorption (CIA) coefficients from HITRAN or Borysow. 
+## Documentation
+The full documentation for pyROX, including an installation guide and tutorial, can be found on [https://py-rox.readthedocs.io/en/latest/](https://py-rox.readthedocs.io/en/latest/). 
 
-# Usage
-Give the python-script with configuration parameters as the first positional argument when calling `main.py` (see examples of these input-files in [`examples/`](examples/)).
+## Installation
+To install pyROX, clone this repository and install via
+```bash
+git clone https://github.com/samderegt/pyROX.git
+cd pyROX
+pip install .
+```
 
-Important steps are run with the following arguments:
+## Usage
+After installation, pyROX can be called directly from the terminal using the `pyROX` command. The first argument should be a should be a python-script with configuration parameters (see [`examples/`](examples/)). 
+
+Important steps can be run with the following arguments:
 - `--download` (or `-d`): Download data from the specified database.
-- `--calculate` (or `-c`): Calculate and save the temporary outputs (i.e. cross-sections, CIA-coefficients).
+- `--calculate` (or `-c`): Calculate and save the temporary outputs (i.e. cross-sections or CIA-coefficients).
 - `--save` (or `-s`): Combine the temporary outputs into a single grid and save to a final output-file. 
 
-Given as:
+Example usage:
+```bash
+pyROX <config_file> --download --calculate --save
 ```
-python main.py <config_file> -d -c -s
-```
+
+## License and Acknowledgements
+pyROX is available under the [MIT license](LICENSE).

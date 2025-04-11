@@ -113,8 +113,9 @@ class CrossSections:
         print('\nCombining temporary files and saving final output')
 
         # Check if the output file already exist
-        tmp_output_files = self._check_existing_output_files(
-            output_file=self.final_output_file, overwrite_all=overwrite
+        self._check_existing_output_files(
+            final_output_file=self.final_output_file, 
+            overwrite_all=overwrite
             )
 
         # Combine the temporary files
@@ -317,13 +318,14 @@ class CrossSections:
             return False
         return True
 
-    def _check_existing_output_files(self, input_files=[''], output_file=None, overwrite_all=False):
+    def _check_existing_output_files(self, input_files=[''], overwrite_all=False, final_output_file=None):
         """
         Check if the output files already exist.
 
         Args:
             input_files (list): List of input file paths.
             overwrite_all (bool): Whether to overwrite all existing files.
+            final_output_file (str): Expected output file name.
 
         Returns:
             list: List of output file paths.
@@ -332,12 +334,15 @@ class CrossSections:
         for i, input_file in enumerate(input_files):
             # Check if the transition file exists
             input_file = pathlib.Path(input_file)
-            
-            if output_file is None:
-                # Temporary output file
+
+            if final_output_file is None:
+                # Is a temporary output file, create the filename based on the input
                 output_file = pathlib.Path(
                     str(self.tmp_output_basename).replace('.hdf5', f'_{input_file.stem}.hdf5')
                 )
+            else:
+                # Use the given, final output filename
+                output_file = pathlib.Path(final_output_file)
 
             # Check if the output file already exists
             if output_file.exists() and not overwrite_all:
@@ -430,8 +435,8 @@ class CrossSections:
         self.wave_max = getattr(self.config, 'wave_max', 250.0) # [um]
         self.wave_max = self.wave_max * sc.micron # [um] -> [m]
 
-        self.nu_min = sc.c/self.wave_max # [m] -> [s^-1]
-        self.nu_max = sc.c/self.wave_min # [m] -> [s^-1]
+        self.nu_min = getattr(self.config, 'nu_min', 1e-2/self.wave_max) * (1e2*sc.c) # [m] -> [s^-1]
+        self.nu_max = getattr(self.config, 'nu_max', 1e-2/self.wave_min) * (1e2*sc.c) # [m] -> [s^-1]
 
         self.adaptive_nu_grid = False
         if self.wave_file.is_file():

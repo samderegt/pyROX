@@ -1,5 +1,5 @@
 # Basic information on database and species
-database = 'hitemp' # Can be ['exomol', 'hitran', 'hitemp', 'kurucz]
+database = 'hitemp' # Can be ['exomol', 'hitran', 'hitemp', 'kurucz']
 species  = 'co'     # Species name
 mass = 28.01
 

@@ -232,7 +232,7 @@ class LBL_Kurucz(LineByLine):
         Raises:
             NotImplementedError: If the method is not implemented.
         """
-        raise NotImplementedError('VALD transitions not implemented yet.')
+        raise NotImplementedError('VALD transitions are not implemented yet.')
 
     def compute_vdw_broadening(self, P, T, E_low, nu_0):
         """
