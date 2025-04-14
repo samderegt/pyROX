@@ -658,7 +658,7 @@ class LineByLine(CrossSections, LineProfileHelper):
             transitions_files = transitions_files[files_range[0]:files_range[1]]
 
         # Check if the output files already exist
-        tmp_output_files = self._check_existing_output_files(
+        transitions_files, tmp_output_files = self._check_existing_output_files(
             transitions_files, overwrite_all=overwrite
             )
 

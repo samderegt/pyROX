@@ -65,7 +65,7 @@ class CIA(CrossSections):
             cia_masks.append(masks)
 
         # Check if the output files already exist
-        tmp_output_files = self._check_existing_output_files(
+        cia_files, tmp_output_files = self._check_existing_output_files(
             cia_files, overwrite_all=overwrite
             )
 

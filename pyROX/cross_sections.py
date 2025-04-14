@@ -362,7 +362,9 @@ class CrossSections:
                         print('  Invalid input. Please enter \"yes\", \"no\", or \"all\".')
                         continue
             output_files.append(output_file)
-        return output_files
+
+        input_files = [pathlib.Path(input_file) for input_file in input_files]
+        return input_files, output_files
 
     def _read_configuration_parameters(self, config):
         """
