@@ -205,8 +205,259 @@ class LineProfileHelper:
             S[nu_bin_idx[k]:nu_bin_idx[k+1]] = S_range
 
         return S
-
+    
     def calculate_line_profiles_in_chunks(
+            self, 
+            nu_0, 
+            S, 
+            gamma_L, 
+            gamma_G, 
+            nu_grid, 
+            wing_cutoff_distance, 
+            N_lines_in_chunk=5000,
+            ):
+        """
+        Calculates line profiles in chunks to optimise speed.
+
+        Args:
+            nu_0 (array): Transition frequencies in s^-1.
+            S (array): Line strengths.
+            gamma_L (array): Lorentzian widths.
+            gamma_G (array): Gaussian widths.
+            nu_grid (array): Wavenumber grid.
+            wing_cutoff_distance (float): Wing cutoff distance in s^-1.
+            N_lines_in_chunk (int): Number of lines to process in each chunk.
+
+        Returns:
+            array: Opacity cross-section on the grid.
+        """
+
+        # Only consider number of lines at a time
+        N_chunks = int(np.ceil(len(S)/N_lines_in_chunk))
+        N_nu_grid = len(nu_grid)
+
+        core_cutoff_distance = 4 * 1e2*sc.c # [s^-1]
+
+        # Left and right wings (lw, rw)
+        idx_lw = np.searchsorted(nu_grid, nu_0-wing_cutoff_distance) - 1
+        idx_lw = np.maximum(0, idx_lw)
+        idx_rw = np.searchsorted(nu_grid, nu_0+wing_cutoff_distance) + 1
+        idx_rw = np.minimum(N_nu_grid, idx_rw)
+
+        # Left and right core (lc, rc)
+        idx_lc = np.searchsorted(nu_grid, nu_0-core_cutoff_distance) - 1
+        idx_lc = np.maximum(idx_lw, idx_lc)
+        idx_rc = np.searchsorted(nu_grid, nu_0+core_cutoff_distance) + 1
+        idx_rc = np.minimum(idx_rw, idx_rc)
+
+        slice_lw  = [slice(idx_lw[i], idx_lc[i]) for i in range(len(nu_0))]
+        slice_rw  = [slice(idx_rc[i], idx_rw[i]) for i in range(len(nu_0))]
+        slice_wcw = [slice(idx_lw[i], idx_rw[i]) for i in range(len(nu_0))]
+        slice_c   = [slice(idx_lc[i], idx_rc[i]) for i in range(len(nu_0))]
+
+        size_lw = [idx_lc[i]-idx_lw[i] for i in range(len(nu_0))]
+        size_rw = [idx_rw[i]-idx_rc[i] for i in range(len(nu_0))]
+        size_c  = [idx_rc[i]-idx_lc[i] for i in range(len(nu_0))]
+
+        # Imaginary coordinate for the Faddeeva function
+        y = gamma_L/gamma_G
+
+        delta_nu_ref = np.diff(nu_grid[slice_c[0]][[0,1]]) / 1
+
+        import time
+        import matplotlib.pyplot as plt
+
+        sigma = np.zeros_like(nu_grid)
+        for ch in tqdm(range(N_chunks)):
+
+            # Upper and lower indices of lines in current chunk
+            idx_chunk_l = int(ch*N_lines_in_chunk)
+            idx_chunk_h = idx_chunk_l + N_lines_in_chunk
+            idx_chunk_h = np.minimum(idx_chunk_h, len(S)) # At last chunk
+            slice_chunk = slice(idx_chunk_l, idx_chunk_h)
+
+            # Lines in current chunk
+            nu_0_chunk    = nu_0[slice_chunk]
+            y_chunk       = y[slice_chunk]
+            gamma_G_chunk = gamma_G[slice_chunk]
+            #gamma_L_chunk = gamma_L[slice_chunk]
+            S_chunk       = S[slice_chunk] # [s^-1/(molecule m^-2)]
+            
+            # Wavenumber-grid slices of lines in current chunk
+            slice_lw_chunk  = slice_lw[slice_chunk]
+            slice_rw_chunk  = slice_rw[slice_chunk]
+            slice_wcw_chunk = slice_wcw[slice_chunk]
+            slice_c_chunk   = slice_c[slice_chunk]
+
+            idx_profiles_lw = [0, *np.cumsum(size_lw[slice_chunk])]
+            idx_profiles_rw = [0, *np.cumsum(size_rw[slice_chunk])]
+            # size_lw_chunk = size_lw[slice_chunk]
+            # size_rw_chunk = size_rw[slice_chunk]
+            # size_c_chunk  = size_c[slice_chunk]
+
+            # Check if the lines are close enough to the reference profile
+            z_at_core_cutoff = core_cutoff_distance/gamma_G_chunk + y_chunk*1j
+            profile_at_core_cutoff = np.real(wofz(z_at_core_cutoff)) / (gamma_G_chunk*np.sqrt(np.pi))
+
+            idx_ref = len(nu_0_chunk) // 2
+            use_ref = np.isclose(profile_at_core_cutoff, profile_at_core_cutoff[idx_ref], rtol=1e-4)
+
+            # Coordinates for the Faddeeva function
+            nu_lw = np.concatenate([nu_0_chunk[i] - nu_grid[sl_lw_i] for i, sl_lw_i in enumerate(slice_lw_chunk)])
+            nu_rw = np.concatenate([nu_grid[sl_rw_i] - nu_0_chunk[i] for i, sl_rw_i in enumerate(slice_rw_chunk)])
+            # x_lw = [(nu_0_chunk[i] - nu_grid[sl_lw_i])/gamma_G_chunk[i] for i, sl_lw_i in enumerate(slice_lw_chunk)]
+            # x_rw = [(nu_grid[sl_rw_i] - nu_0_chunk[i])/gamma_G_chunk[i] for i, sl_rw_i in enumerate(slice_rw_chunk)]
+            # x_lw = np.concatenate(x_lw)
+            # x_rw = np.concatenate(x_rw)
+
+            z_c = [
+                (nu_grid[sl_c_i]-nu_0_chunk[i])/gamma_G_chunk[i] + y_chunk[i]*1j
+                if use_ref_i else (nu_grid[sl_wcw_i]-nu_0_chunk[i])/gamma_G_chunk[i] + y_chunk[i]*1j
+                for i, (sl_c_i, sl_wcw_i, use_ref_i) in enumerate(zip(slice_c_chunk, slice_wcw_chunk, use_ref))
+            ]
+            size_c_chunk = [len(z_i) for z_i in z_c]
+            idx_profiles_c = [0, *np.cumsum(size_c_chunk)]
+
+            z_c = np.concatenate(z_c) # Collapse into a 1D array
+
+            # Faddeeva function on multiple lines at once
+            profiles_c = np.real(wofz(z_c))
+
+            # Calculate the reference profile
+            gamma_G_ref = gamma_G_chunk[idx_ref]
+
+            y_ref = y_chunk[idx_ref]
+            nu_ref = np.arange(core_cutoff_distance, wing_cutoff_distance+delta_nu_ref*2, delta_nu_ref)
+            #x_ref = nu_ref / gamma_G_ref
+            # x_ref = 1/gamma_G_ref * np.arange(
+            #     #core_cutoff_distance, wing_cutoff_distance+delta_nu_ref*2, delta_nu_ref
+            #     0, wing_cutoff_distance+delta_nu_ref*2, delta_nu_ref
+            # )
+            z_ref = nu_ref/gamma_G_ref + y_ref*1j
+            w_ref = wofz(z_ref)# / (gamma_G_ref*np.sqrt(np.pi))
+            R_w_ref = np.real(w_ref); I_w_ref = np.imag(w_ref)
+
+            #print(V_ref/(gamma_G_ref*np.sqrt(np.pi)) - np.real(wofz((x_ref+y_ref*1j)/(gamma_G_ref*np.sqrt(np.pi)))))
+
+            #profile_ref = V_ref / (gamma_G_ref*np.sqrt(np.pi))
+            profile_ref = R_w_ref / (gamma_G_ref*np.sqrt(np.pi))
+
+            # Derivatives of the real component (https://en.wikipedia.org/wiki/Faddeeva_function#Derivative)
+            c1 = 1/(gamma_G_ref**2*np.sqrt(np.pi))
+            dw_dz = (2j/np.sqrt(np.pi) - 2*z_ref*w_ref)
+            dV_dnu_nu_0 = c1 * np.real(dw_dz)
+            #print(np.all(dV_dnu_nu_0 == c1*np.real(-2*z_ref*w_ref)))
+
+            dV_dgamma_L = c1 * np.imag(dw_dz)
+            dV_dgamma_G = (-c1) * (R_w_ref + np.real(z_ref*dw_dz))
+
+            #dV_dnu_nu_0 *= 0
+            dV_dgamma_L *= 0
+            dV_dgamma_G *= 0
+
+            for i, (sl_wcw_i, use_ref_i) in enumerate(zip(slice_wcw_chunk, use_ref)):
+
+                # Get the line core
+                profile_i = profiles_c[idx_profiles_c[i]:idx_profiles_c[i+1]] / (gamma_G_chunk[i]*np.sqrt(np.pi))
+
+                if use_ref_i:
+                    # Add the left and right wings to the core
+                    sl_prof_lw = slice(idx_profiles_lw[i], idx_profiles_lw[i+1])
+                    indices_lw_in_ref = np.searchsorted(nu_ref, nu_lw[sl_prof_lw]) - 1
+                    indices_lw_in_ref = np.maximum(0, indices_lw_in_ref)
+
+                    sl_prof_rw = slice(idx_profiles_rw[i], idx_profiles_rw[i+1])
+                    indices_rw_in_ref = np.searchsorted(nu_ref, nu_rw[sl_prof_rw]) - 1
+                    # indices_rw_in_ref = np.maximum(0, indices_rw_in_ref)
+
+                    dnu_nu_0_lw = nu_lw[sl_prof_lw] - nu_ref[indices_lw_in_ref]
+                    dnu_nu_0_rw = nu_rw[sl_prof_rw] - nu_ref[indices_rw_in_ref]
+                    dgamma_L = y_chunk[i]/gamma_G_chunk[i] - y_ref/gamma_G_ref
+                    dgamma_G = gamma_G_chunk[i] - gamma_G_ref
+
+                    # Taylor expansion
+                    profile_lw_i = (
+                        profile_ref[indices_lw_in_ref] +
+                        dV_dnu_nu_0[indices_lw_in_ref]*dnu_nu_0_lw +
+                        dV_dgamma_L[indices_lw_in_ref]*dgamma_L +
+                        dV_dgamma_G[indices_lw_in_ref]*dgamma_G
+                    )
+                    profile_rw_i = (
+                        profile_ref[indices_rw_in_ref] +
+                        dV_dnu_nu_0[indices_rw_in_ref]*dnu_nu_0_rw +
+                        dV_dgamma_L[indices_rw_in_ref]*dgamma_L +
+                        dV_dgamma_G[indices_rw_in_ref]*dgamma_G
+                    )
+
+                    if i == 3000:
+                        marker = None
+                        fig, ax = plt.subplots(figsize=(10, 5), nrows=2, ncols=2, sharey='row', sharex='col')
+                        ax = np.array(ax)
+
+                        ax[0,0].plot((nu_grid[slice_c_chunk[i]]-nu_0_chunk[i])/(1e2*sc.c), profile_i, 'C0-', label='core', marker=marker)
+                        ax[0,1].plot((nu_grid[slice_c_chunk[i]]-nu_0_chunk[i])/(1e2*sc.c), profile_i, 'C0-', label='core', marker=marker)
+
+                        exact_lw = np.real(
+                            wofz((nu_lw[sl_prof_lw]/gamma_G_chunk[i]+y_chunk[i]*1j))
+                        ) / (gamma_G_chunk[i]*np.sqrt(np.pi))
+
+                        ax[0,0].plot(-nu_lw[sl_prof_lw]/(1e2*sc.c), exact_lw, 'C2-', label='Exact', marker=marker)
+                        ax[0,0].plot(-nu_ref/(1e2*sc.c), profile_ref, 'C1--', label='ref', marker=marker)
+                        ax[0,0].plot(-(nu_ref[indices_lw_in_ref])/(1e2*sc.c), profile_ref[indices_lw_in_ref], 'C1', marker=marker)
+                        ax[0,0].plot(-nu_lw[sl_prof_lw]/(1e2*sc.c), profile_lw_i, 'C3-', label='Taylor', marker=marker)
+
+                        exact_rw = np.real(
+                            wofz((nu_rw[sl_prof_rw]/gamma_G_chunk[i]+y_chunk[i]*1j))
+                        ) / (gamma_G_chunk[i]*np.sqrt(np.pi))
+
+                        ax[0,1].plot(nu_rw[sl_prof_rw]/(1e2*sc.c), exact_rw, 'C2-', marker=marker)
+                        ax[0,1].plot(nu_ref/(1e2*sc.c), profile_ref, 'C1--', marker=marker)
+                        ax[0,1].plot((nu_ref[indices_rw_in_ref])/(1e2*sc.c), profile_ref[indices_rw_in_ref], 'C1', marker=marker)
+                        ax[0,1].plot(nu_rw[sl_prof_rw]/(1e2*sc.c), profile_rw_i, 'C3-', marker=marker)
+                        
+                        ax[1,0].plot(-nu_lw[sl_prof_lw]/(1e2*sc.c), np.abs(profile_ref[indices_lw_in_ref] - exact_lw)/np.abs(exact_lw) * 100, 'C0-', marker=marker)
+                        ax[1,0].plot(-nu_lw[sl_prof_lw]/(1e2*sc.c), np.abs(profile_lw_i - exact_lw)/np.abs(exact_lw) * 100, 'C3-', label='Taylor', marker=marker)
+
+                        ax[1,1].plot(nu_rw[sl_prof_rw]/(1e2*sc.c), np.abs(profile_ref[indices_rw_in_ref] - exact_rw)/np.abs(exact_rw) * 100, 'C0-', marker=marker)
+                        ax[1,1].plot(nu_rw[sl_prof_rw]/(1e2*sc.c), np.abs(profile_rw_i - exact_rw)/np.abs(exact_rw) * 100, 'C3-', label='Taylor', marker=marker)
+
+                        # for ax_i in ax[1]:
+                        #     full = np.real(wofz((x_lw[sl_prof_lw]+y_chunk[i]*1j))) / (gamma_G_chunk[i]*np.sqrt(np.pi))
+                        #     ax[0,0].plot(-x_lw[sl_prof_lw], full, 'C2.-', label='Exact')
+
+                        #     rel_diff = np.abs(V_ref[indices_lw_in_ref] - full)/full * 100
+                        #     ax_i.plot(-x_lw[sl_prof_lw], rel_diff, 'C2x-', label='Initial')
+                        #     rel_diff = np.abs(profile_lw_i - full)/full * 100
+                        #     ax_i.plot(-x_lw[sl_prof_lw], rel_diff, 'C3x-', label='Taylor')
+
+                        #     full = np.real(wofz((x_rw[sl_prof_rw]+y_chunk[i]*1j))) / (gamma_G_chunk[i]*np.sqrt(np.pi))
+                        #     ax[0,1].plot(x_rw[sl_prof_rw], full, 'C2.-')
+
+                        #     rel_diff = np.abs(V_ref[indices_rw_in_ref] - full)/full * 100
+                        #     ax_i.plot(x_rw[sl_prof_rw], rel_diff, 'C2x-')
+                        #     rel_diff = np.abs(profile_rw_i - full)/full * 100
+                        #     ax_i.plot(x_rw[sl_prof_rw], rel_diff, 'C3x-')
+
+                        #     ax_i.set(yscale='log')
+
+                        ax[0,0].legend(); ax[1,0].legend()
+                        #xlim = nu_lw[sl_prof_lw].min()/(1e2*sc.c) + np.array([-1,1])*0.05
+                        #xlim = nu_lw[sl_prof_lw].max()/(1e2*sc.c) + np.array([-1,1])*0.05
+                        xlim = nu_lw[sl_prof_lw].max()/(1e2*sc.c)*np.array([0,1.02])
+                        
+                        ax[0,0].set(xlim=-xlim[::-1]); ax[0,1].set(xlim=xlim)
+                        ax[0,0].set(yscale='log')
+                        ax[1,0].set(yscale='log')
+
+                        plt.savefig(self.output_data_dir / 'profile.pdf')
+                        plt.close()
+                        exit()
+
+                    profile_i = np.concatenate([profile_lw_i, profile_i, profile_rw_i])
+
+                sigma[sl_wcw_i] += S_chunk[i] * profile_i# / (gamma_G_chunk[i]*np.sqrt(np.pi))
+
+    def __calculate_line_profiles_in_chunks(
             self, 
             nu_0, 
             S, 
@@ -251,7 +502,8 @@ class LineProfileHelper:
             ]
 
         sigma = np.zeros_like(nu_grid)
-        for ch in range(N_chunks):
+        # for ch in range(N_chunks):
+        for ch in tqdm(range(N_chunks)):
 
             # Upper and lower indices of lines in current chunk
             idx_chunk_l = int(ch*N_lines_in_chunk)
