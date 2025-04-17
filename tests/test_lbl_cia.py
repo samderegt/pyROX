@@ -140,8 +140,8 @@ def setup_lbl_config(config, files):
         output_data_dir=output_data_dir, 
         input_data_dir=input_data_dir, 
         files=files, 
-        P_grid=1., T_grid=2000., # [bar], [K]
-        nu_min=1, nu_max=200, delta_nu=0.01, adaptive_nu=False,
+        P_grid=np.logspace(-4, 2, 5), T_grid=2000., # [bar], [K]
+        nu_min=1, nu_max=200, delta_nu=0.01, adaptive_nu=True,
         wave_file='', delta_wave=np.nan, resolution=np.nan, # delta_nu is used
         perturber_info={'H2':{'VMR':1.0,'gamma':0.07,'n':0.5}}
     )
