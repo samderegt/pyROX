@@ -205,8 +205,8 @@ class LineProfileHelper:
             S[nu_bin_idx[k]:nu_bin_idx[k+1]] = S_range
 
         return S
-
-    def calculate_line_profiles_in_chunks(
+    
+    def calculate_line_profiles(
             self, 
             nu_0, 
             S, 
@@ -214,7 +214,7 @@ class LineProfileHelper:
             gamma_G, 
             nu_grid, 
             wing_cutoff_distance, 
-            N_lines_in_chunk=500,
+            delta_nu, 
             ):
         """
         Calculates line profiles in chunks to optimise speed.
@@ -226,33 +226,100 @@ class LineProfileHelper:
             gamma_G (array): Gaussian widths.
             nu_grid (array): Wavenumber grid.
             wing_cutoff_distance (float): Wing cutoff distance in s^-1.
+            delta_nu (float): Wavenumber grid spacing in s^-1.
+
+        Returns:
+            array: Opacity cross-section on the grid.
+        """
+
+        '''
+        import time
+        t_start = time.time()
+        sigma_1 = self._calculate_line_profiles_in_chunks_fixed_delta_nu(
+            nu_0, S, gamma_L, gamma_G, nu_grid, wing_cutoff_distance, delta_nu
+            )
+        print(f'  {1e3*(time.time()-t_start)/len(nu_0):.4f} ms/profile | 100,000 lines in {(time.time()-t_start)/len(nu_0)*1e5:.1f} s')
+        t_start = time.time()
+        sigma_2 = self._calculate_line_profiles_in_chunks(
+            nu_0, S, gamma_L, gamma_G, nu_grid, wing_cutoff_distance, delta_nu
+            )
+        print(f'  {1e3*(time.time()-t_start)/len(nu_0):.4f} ms/profile | 100,000 lines in {(time.time()-t_start)/len(nu_0)*1e5:.1f} s')
+        
+        rel_diff = np.abs(sigma_1-sigma_2)/sigma_1 * 100
+        rel_diff = rel_diff[np.isfinite(rel_diff)]
+        print(f'  Relative error: {np.nanmean(rel_diff):.2e} % (mean) | {np.nanmax(rel_diff):.2e} % (max)')
+
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(10,7), nrows=2)
+        ax[0].plot(nu_grid/(1e2*sc.c), sigma_1, lw=1)
+        ax[0].plot(nu_grid/(1e2*sc.c), sigma_2, lw=1)
+        ax[1].plot(nu_grid/(1e2*sc.c), np.abs(sigma_1-sigma_2)/sigma_1 * 100, lw=1)
+        ax[0].set(yscale='log')
+        #plt.yscale('log')
+        plt.savefig(self.output_data_dir / 'profile.pdf')
+        plt.close()
+
+        return sigma_1
+        '''
+        if not np.isnan(self.delta_nu):
+            # Fixed wavenumber spacing
+            return self._calculate_line_profiles_in_chunks_fixed_delta_nu(
+                nu_0, S, gamma_L, gamma_G, nu_grid, wing_cutoff_distance, delta_nu
+                )
+        
+        # Other wavenumber grids
+        return self._calculate_line_profiles_in_chunks(
+            nu_0, S, gamma_L, gamma_G, nu_grid, wing_cutoff_distance, delta_nu
+            )
+    
+    def _calculate_line_profiles_in_chunks(
+            self, 
+            nu_0, 
+            S, 
+            gamma_L, 
+            gamma_G, 
+            nu_grid, 
+            wing_cutoff_distance, 
+            delta_nu,
+            N_lines_in_chunk=1,
+            ):
+        """
+        Calculates line profiles in chunks to optimise speed.
+
+        Args:
+            nu_0 (array): Transition frequencies in s^-1.
+            S (array): Line strengths.
+            gamma_L (array): Lorentzian widths.
+            gamma_G (array): Gaussian widths.
+            nu_grid (array): Wavenumber grid.
+            wing_cutoff_distance (float): Wing cutoff distance in s^-1.
+            delta_nu (float): Wavenumber grid spacing in s^-1.
             N_lines_in_chunk (int): Number of lines to process in each chunk.
 
         Returns:
             array: Opacity cross-section on the grid.
         """
-        # Indices where lines should be inserted
-        idx_to_insert = np.searchsorted(nu_grid, nu_0) - 1
-
-        # Relative width of Lorentzian vs. Gaussian
-        a = gamma_L / gamma_G # Gandhi et al. (2020)
 
         # Only consider number of lines at a time
         N_chunks = int(np.ceil(len(S)/N_lines_in_chunk))
         N_nu_grid = len(nu_grid)
 
+        # Indices to insert the lines back into nu_grid
+        idx_nu_grid = np.searchsorted(nu_grid, nu_0) - 1
+        wing_length = int(np.ceil((wing_cutoff_distance)/delta_nu))
+
         # Left and right indices of the line profile within the grid
-        idx_nu_grid_l = np.searchsorted(nu_grid, nu_0-wing_cutoff_distance) - 1
-        idx_nu_grid_l = np.maximum(0, idx_nu_grid_l)
-        idx_nu_grid_h = np.searchsorted(nu_grid, nu_0+wing_cutoff_distance) + 1
-        idx_nu_grid_h = np.minimum(N_nu_grid, idx_nu_grid_h)
-        slice_nu_grid = [
-            slice(idx_nu_grid_l[i], idx_nu_grid_h[i]) for i in range(len(idx_nu_grid_l))
-            ]
+        idx_nu_grid_l = np.maximum(0, idx_nu_grid-wing_length)
+        idx_nu_grid_h = np.minimum(N_nu_grid, idx_nu_grid+wing_length+1)
+        slice_nu_grid = [slice(idx_nu_grid_l[i], idx_nu_grid_h[i]) for i in range(len(nu_0))]
+
+        # Complex part of Faddeeva coordinate
+        y = gamma_L / gamma_G
+        strength = S / (gamma_G*np.sqrt(np.pi))
 
         sigma = np.zeros_like(nu_grid)
         for ch in range(N_chunks):
-
+        
             # Upper and lower indices of lines in current chunk
             idx_chunk_l = int(ch*N_lines_in_chunk)
             idx_chunk_h = idx_chunk_l + N_lines_in_chunk
@@ -261,37 +328,129 @@ class LineProfileHelper:
 
             # Lines in current chunk
             nu_0_chunk    = nu_0[slice_chunk]
+            y_chunk       = y[slice_chunk]
             gamma_G_chunk = gamma_G[slice_chunk]
-            a_chunk       = a[slice_chunk]
-            S_chunk       = S[slice_chunk] # [s^-1/(molecule m^-2)]
+            strength_chunk = strength[slice_chunk]
             
             # Wavenumber-grid slices of lines in current chunk
             slice_nu_grid_chunk = slice_nu_grid[slice_chunk]
 
-            x = []; len_profile = []
-            for i, slice_nu_grid_i in enumerate(slice_nu_grid_chunk):
-                # Coordinates for the Faddeeva function
-                x_i = (
-                    (nu_grid[slice_nu_grid_i]-nu_0_chunk[i])/gamma_G_chunk[i] + a_chunk[i]*1j
-                )
-                x.append(x_i)
-                len_profile.append(len(x_i))
-
-            # Faddeeva function on multiple lines at once   
-            x = np.concatenate(x) # Collapse into a 1D array
-            profiles = np.real(wofz(x))
-
+            # Coordinates for the Faddeeva function
+            z = [(nu_grid[sl_nu_grid_i]-nu_0_chunk[i])/gamma_G_chunk[i] + y_chunk[i]*1j
+                for i, sl_nu_grid_i in enumerate(slice_nu_grid_chunk)]
+            
             # Indices to separate back into lines
-            idx_profile = np.concatenate([[0], np.cumsum(len_profile)])
+            len_profile = [len(z_i) for z_i in z]
+            idx_profile = [0, *np.cumsum(len_profile)]
+
+            # Collapse into a 1D array
+            z = np.concatenate(z)
+            R_w = np.real(wofz(z))
+
             for i, slice_nu_grid_i in enumerate(slice_nu_grid_chunk):
 
                 idx_profile_l = idx_profile[i]
                 idx_profile_h = idx_profile[i+1]
 
                 # Add line to total cross-section
-                sigma[slice_nu_grid_i] += (
-                    S_chunk[i] * profiles[idx_profile_l:idx_profile_h] / (gamma_G_chunk[i]*np.sqrt(np.pi))
-                )
+                sigma[slice_nu_grid_i] += strength_chunk[i]*R_w[idx_profile_l:idx_profile_h]
+            
+        return sigma
+
+    def _calculate_line_profiles_in_chunks_fixed_delta_nu(
+            self, 
+            nu_0, 
+            S, 
+            gamma_L, 
+            gamma_G, 
+            nu_grid, 
+            wing_cutoff_distance, 
+            delta_nu, 
+            N_lines_in_chunk=1,
+            ):
+        """
+        Calculates line profiles for a fixed wavenumber spacing. 
+        This method is more efficient than calculate_line_profiles_in_chunks().
+
+        Args:
+            nu_0 (array): Transition frequencies in s^-1.
+            S (array): Line strengths.
+            gamma_L (array): Lorentzian widths.
+            gamma_G (array): Gaussian widths.
+            nu_grid (array): Wavenumber grid.
+            wing_cutoff_distance (float): Wing cutoff distance in s^-1.
+            delta_nu (float): Wavenumber grid spacing in s^-1.
+            N_lines_in_chunk (int): Number of lines to process in each chunk.
+        
+        Returns:
+            array: Opacity cross-section on the grid.
+        """
+        
+        # Only consider number of lines at a time
+        N_chunks = int(np.ceil(len(S)/N_lines_in_chunk))
+        N_nu_grid = len(nu_grid)
+
+        # Construct the temporary line-profile grid        
+        nu_line = np.arange(0, wing_cutoff_distance+delta_nu, delta_nu)
+        nu_line = np.concatenate([-nu_line[1:][::-1], nu_line])
+        nu_line = np.repeat(nu_line[None,:], N_lines_in_chunk, axis=0)
+        
+        # Indices to insert the lines back into nu_grid
+        idx_nu_grid = np.searchsorted(nu_grid, nu_0) - 1
+        dnu_0 = nu_0 - nu_grid[idx_nu_grid] # Separation between grid-point and nu_0
+
+        # Left and right indices of the line profile within the grid
+        idx_nu_grid_l = np.maximum(0, idx_nu_grid-nu_line.shape[1]//2)
+        idx_nu_grid_h = np.minimum(N_nu_grid, idx_nu_grid+nu_line.shape[1]//2+1)
+        slice_nu_grid = [slice(idx_nu_grid_l[i], idx_nu_grid_h[i]) for i in range(len(nu_0))]
+        
+        # Left and right indices within the temporary grid
+        idx_nu_line_l = nu_line.shape[1]//2 - (idx_nu_grid-idx_nu_grid_l)
+        idx_nu_line_l = np.maximum(0, idx_nu_line_l)
+        idx_nu_line_h = nu_line.shape[1]//2 + (idx_nu_grid_h-idx_nu_grid)
+        idx_nu_line_h = np.minimum(nu_line.shape[1], idx_nu_line_h)
+        slice_nu_line = [slice(idx_nu_line_l[i], idx_nu_line_h[i]) for i in range(len(nu_0))]
+
+        # Reshape before the loop
+        nu_0 = nu_0[:,None]
+        dnu_0 = dnu_0[:,None]
+        S = S[:,None]
+        gamma_L = gamma_L[:,None]
+        gamma_G = gamma_G[:,None]
+
+        # Complex part of Faddeeva coordinate
+        y = gamma_L / gamma_G
+        strength = S / (gamma_G*np.sqrt(np.pi))
+
+        sigma = np.zeros_like(nu_grid)
+        for ch in range(N_chunks):
+
+            # Upper and lower indices of lines in current chunk
+            idx_chunk_l = int(ch*N_lines_in_chunk)
+            idx_chunk_h = idx_chunk_l + N_lines_in_chunk
+            if idx_chunk_h > len(S):
+                idx_chunk_h = len(S) # Last chunk
+                nu_line = nu_line[:idx_chunk_h-idx_chunk_l]
+
+            slice_chunk = slice(idx_chunk_l, idx_chunk_h)
+
+            # Lines in current chunk
+            dnu_0_chunk   = dnu_0[slice_chunk]
+            y_chunk       = y[slice_chunk]
+            gamma_G_chunk = gamma_G[slice_chunk]
+            strength_chunk = strength[slice_chunk]
+
+            # Faddeeva function on multiple lines at once
+            z = (nu_line-dnu_0_chunk)/gamma_G_chunk + y_chunk*1j
+            V = strength_chunk * np.real(wofz(z))
+
+            # Wavenumber-grid slices of lines in current chunk
+            slice_nu_grid_chunk = slice_nu_grid[slice_chunk]
+            slice_nu_line_chunk = slice_nu_line[slice_chunk]
+
+            for i, (sl_nu_grid_i, sl_nu_line_i, V_i) in enumerate(zip(slice_nu_grid_chunk, slice_nu_line_chunk, V)):
+                # Add line to total cross-section
+                sigma[sl_nu_grid_i] += V_i[sl_nu_line_i]
 
         return sigma
 
@@ -612,6 +771,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         # Change to a coarse grid if lines are substantially broadened
         gamma_V = self.compute_voigt_width(gamma_G, gamma_L) # Voigt width
         nu_grid_to_use = self._setup_coarse_nu_grid(adaptive_delta_nu=np.mean(gamma_V)/6)
+        delta_nu_to_use = np.diff(nu_grid_to_use[:2]) # [s^-1]
         
         # Wing cutoff from given lambda-function
         wing_cutoff_distance = self.wing_cutoff(np.mean(gamma_V), P) # [s^-1]
@@ -621,14 +781,16 @@ class LineByLine(CrossSections, LineProfileHelper):
         S = self.normalise_wing_cutoff(S, wing_cutoff_distance, gamma_L)
 
         # Compute the line-profiles in chunks
-        sigma = self.calculate_line_profiles_in_chunks(
-            nu_0=nu_0, 
-            S=S, 
-            gamma_L=gamma_L, 
-            gamma_G=gamma_G, 
-            nu_grid=nu_grid_to_use, 
-            wing_cutoff_distance=wing_cutoff_distance, 
+        sigma = self.calculate_line_profiles(
+            nu_0=nu_0,
+            S=S,
+            gamma_L=gamma_L,
+            gamma_G=gamma_G,
+            nu_grid=nu_grid_to_use,
+            wing_cutoff_distance=wing_cutoff_distance,
+            delta_nu=delta_nu_to_use,
         )
+
         if len(nu_grid_to_use) != len(self.nu_grid):
             # Interpolate to the original grid
             sigma = np.interp(self.nu_grid, nu_grid_to_use, sigma)
