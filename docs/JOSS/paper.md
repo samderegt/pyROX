@@ -35,7 +35,7 @@ affiliations:
     index: 2
   - name: Centre for Exoplanets and Habitability, University of Warwick, Gibbet Hill Road, Coventry CV4 7AL, UK
     index: 3
-date: 10 April 2025
+date: 24 April 2025
 bibliography: paper.bib
 
 ---
@@ -47,15 +47,11 @@ bibliography: paper.bib
  -->
 
 # Statement of need
-The advent of a new generation of telescopes and instruments has led to a dramatic increase in the quality of observations of exoplanets and brown dwarfs [...]. For example, spectroscopic observations with JWST cover fainter objects over a wide wavelength-range (1-20 um) which was previously inaccessible by ground- or space-based facilities [...]. Similarly, developments in direct-imaging instrumentation allow astronomers to measure the spectral emission of exoplanet companions at closer separations to their host stars [...]. Significant progress has also been made in the ability to model these spectra with various software used for radiative transfer, chemistry, cloud-condensation, etc. Recently, these tools are coupled with sampling algorithms to infer properties about the atmospheres of the studied objects [...]. 
+The advent of a new generation of telescopes and instruments has led to a dramatic increase in the quality of observations of exoplanets and brown dwarfs. For example, spectroscopic observations with JWST cover sub-stellar objects over a wide wavelength-range (1-20 um) that was previously difficult to access with ground- or space-based facilities [e.g. @Miles_ea_2023; @Rustamkulov_ea_2023; @Matthews_ea_2025]. Similarly, developments in direct-imaging instrumentation allow astronomers to measure the emission of exoplanet companions at closer separations to their host stars [e.g. @Landman_ea_2024; @Xuan_ea_2024]. Significant progress has also been made in atmospheric modelling with various software used for radiative transfer, chemistry, cloud-condensation, etc. Recently, these tools are coupled with sampling algorithms to infer properties of the observed objects [e.g. @Brogi_ea_2019; Gibson_ea_2020]. 
 
-<!-- 
-With the advent of new telescopes/instruments (JWST, ELT/METIS, VLT/CRIRES, Keck/KPIC), the quality of observations has dramatically increased. 
-In addition, new retrieval techniques have made it possible to infer atmospheric properties, including atmospheric abundances. 
+Opacity cross-sections are a critical component to accurately modelling sub-stellar atmospheres. ... <!-- Energy transport --> Furthermore, studies at high spectral resolution require the frequencies of transition lines to be well-determined. Inaccuracies in line-list data can result in biased abundance constraints [e.g. @Brogi_ea_2019; @de_Regt_ea_2024] or suspected non-detections of certain molecules [e.g. @de_Regt_ea_2022]. For these reasons, it is important that the most up-to-date and complete opacity data are used when studying sub-stellar atmospheres. However, it can be challenging to calculate opacity cross-sections in a computationally efficient manner for line lists from different databases which can sometimes consist of billions of transitions. 
 
-With high signal-to-noises and high resolution spectra, it becomes increasingly clear that model deficiencies, not the data-quality, limits our ability to evaluate the atmospheric conditions. 
-An important aspect of these spectral models is the accuracy of the line list, and the pressure and/or temperature on which the opacity cross-sections are calculated. 
- -->
+To help resolve this challenge, we present \texttt{pyROX} a user-friendly Python package to calculate molecular and atomic cross-sections from the ExoMol, HITRAN/HITEMP, and Kurucz databases. As another important opacity source in sub-stellar atmospheres, \texttt{pyROX} supports calculations of Collision-Induced Absorption (CIA) coefficients from the HITRAN and Borysow databases.
 
 # Citations
 ...
