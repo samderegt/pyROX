@@ -2,6 +2,8 @@ import numpy as np
 import pathlib
 import itertools
 
+from tqdm import tqdm
+
 from pyROX import utils, sc
 
 def load_data_object(config, **kwargs):
@@ -101,12 +103,13 @@ class CrossSections:
         """
         raise NotImplementedError("This method should be implemented in the subclass.")
 
-    def save_combined_outputs(self, keys_to_merge, overwrite=False, **kwargs):
+    def save_combined_outputs(self, keys_to_merge, progress_bar=False, overwrite=False, **kwargs):
         """
         Combine temporary files and save the final output.
 
         Args:
             keys_to_merge (list): List of keys to combine.
+            progress_bar (bool, optional): Whether to show a progress bar. Defaults to False.
             overwrite (bool, optional): Whether to overwrite the final output file if it exists. Defaults to False.
             **kwargs: Additional arguments for merging.
         """
@@ -119,7 +122,10 @@ class CrossSections:
             )
 
         # Combine the temporary files
-        self.combine_temporary_outputs(keys_to_merge=keys_to_merge)
+        self.combine_temporary_outputs(
+            keys_to_merge=keys_to_merge, 
+            progress_bar=progress_bar,
+            )
 
         # Flip arrays to be ascending in wavelength
         if np.diff(self.combined_datasets['wave'])[0] < 0:
@@ -135,12 +141,13 @@ class CrossSections:
             attrs=self.combined_attrs
             )
 
-    def combine_temporary_outputs(self, keys_to_merge, **kwargs):
+    def combine_temporary_outputs(self, keys_to_merge, progress_bar=False, **kwargs):
         """
         Combine temporary output-files into a single dataset.
 
         Args:
             keys_to_merge (list): List of keys to read from the temporary files. 
+            progress_bar (bool, optional): Whether to show a progress bar. Defaults to False.
             **kwargs: Additional arguments for merging.
 
         Raises:
@@ -166,18 +173,23 @@ class CrossSections:
         for tmp_file in tmp_files:
             print(f'    - \"{tmp_file.name}\"')
         
-        # Check compatibility of files before combining
-        wave_main, P_main, T_main = self._combine_PT_grids(tmp_files, sum_outputs)
+        # Check compatibility of files before combining (wave_main is sorted)
+        wave_main, P_main, T_main, flip_wave_axis = self._combine_PT_grids(tmp_files, sum_outputs)
 
         # Combine all files into a single array
         self.combined_datasets = {
             key: np.zeros((len(wave_main), len(P_main), len(T_main)), dtype=np.float64) 
             for key in keys_to_merge
             }
-        for i, tmp_file in enumerate(tmp_files):
+        # Make a nice progress bar
+        pbar_kwargs = dict(
+            disable=(not progress_bar), 
+            bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}', 
+        )
+        for i, tmp_file in enumerate(tqdm(tmp_files, **pbar_kwargs)):
 
             datasets, attrs = utils.read_from_hdf5(
-                tmp_file, keys_to_read=keys_to_merge+['P','T','wave'], return_attrs=True
+                tmp_file, keys_to_read=keys_to_merge+['P','T'], return_attrs=True
                 )
 
             # Check if dataset has pressure-axis (line-by-line vs. absorption coeffs)
@@ -206,6 +218,10 @@ class CrossSections:
                     else:
                         # Line-by-line cross-sections
                         data_to_add = datasets[key][:,j,k]
+
+                    if flip_wave_axis[i]:
+                        # Flip the wavelength axis to be ascending
+                        data_to_add = data_to_add[::-1]
                     
                     if sum_outputs:
                         # Sum cross-sections
@@ -254,17 +270,27 @@ class CrossSections:
             sum_outputs (bool): Whether to sum the outputs.
 
         Returns:
-            tuple: A tuple containing the main wavelength grid, pressure grid, and temperature grid.
+            tuple: A tuple containing the main wavelength grid, pressure grid, temperature grid, 
+            and a list of booleans indicating if the wavelength axis was flipped.
 
         Raises:
             ValueError: If the PT grid is not rectangular or grids are incompatible.
         """
+        print('  Combining PT-grids of temporary files')
+
         all_PT = []
+        flip_wave_axis = []
         for i, tmp_file in enumerate(tmp_files):
 
             datasets = utils.read_from_hdf5(tmp_file, keys_to_read=['wave','P','T'])
 
             wave = datasets.get('wave')
+            if wave[1] < wave[0]:
+                # Flip the wavelength axis to be ascending
+                wave = wave[::-1]
+                flip_wave_axis.append(True)
+            else:
+                flip_wave_axis.append(False)
             P = datasets.get('P', [0.])
             T = datasets.get('T')
 
@@ -279,10 +305,10 @@ class CrossSections:
                 P_main = P.copy()
                 T_main = T.copy()
 
-            assert (wave_main == wave).all(), "Wavelength grids are not compatible."
+            assert np.isclose(wave_main, wave, rtol=1e-5, atol=0.).all(), "Wavelength grids are not compatible."
             if sum_outputs:
-                assert (P_main == P).all(), "Pressure grids are not compatible."
-                assert (T_main == T).all(), "Temperature grids are not compatible."
+                assert np.isclose(P_main, P, rtol=1e-5, atol=0.).all(), "Pressure grids are not compatible."
+                assert np.isclose(T_main, T, rtol=1e-5, atol=0.).all(), "Temperature grids are not compatible."
 
             # Add the PT combination
             for PT in itertools.product(P, T):
@@ -302,7 +328,7 @@ class CrossSections:
         P_main = np.sort(P_main)
         T_main = np.sort(T_main)
 
-        return wave_main, P_main, T_main
+        return wave_main, P_main, T_main, flip_wave_axis
         
     def _check_if_sum_outputs(self):
         """

@@ -22,10 +22,17 @@ class LBL_ExoMol(LineByLine):
         print('\nDownloading data from ExoMol')
 
         files = []
+        file_transitions = []
         file_def_json = None
         for url in config.urls:
             file = utils.download(url, config.input_data_dir)
             files.append(file)
+
+            if file is None:
+                continue
+
+            if file.endswith('.trans.bz2'):
+                file_transitions.append(file)
 
             if url.endswith('.def.json'):
                 # Check if the url is a definition file
@@ -41,22 +48,24 @@ class LBL_ExoMol(LineByLine):
         with open(file_def_json, 'r') as f:
             file_def_dict = json.load(f)
 
-        # Download transitions files
-        file_transitions = [utils.download(f'{url_base}.trans.bz2', config.input_data_dir)]
-        if None in file_transitions:
-            # Split up into multiple files
-            wavenumbers = np.linspace(
-                0, file_def_dict['dataset']['transitions']['max_wavenumber'], 
-                file_def_dict['dataset']['transitions']['number_of_transition_files'], 
-                endpoint=False, dtype=int
-            )
-            file_transitions = []
-            for i in range(len(wavenumbers)-1):
-                nu_min_i, nu_max_i = wavenumbers[i], wavenumbers[i+1]
-                file_transitions_i = utils.download(
-                    f'{url_base}__{nu_min_i:05d}-{nu_max_i:05d}.trans.bz2', config.input_data_dir
+        if len(file_transitions) == 0:
+            # Download transitions files
+            file_transitions = [utils.download(f'{url_base}.trans.bz2', config.input_data_dir)]
+            if None in file_transitions:
+                # Split up into multiple files
+                N_files = file_def_dict['dataset']['transitions']['number_of_transition_files']
+                wavenumbers = np.linspace(
+                    0, file_def_dict['dataset']['transitions']['max_wavenumber'], 
+                    N_files+1, endpoint=True, dtype=int
                 )
-                file_transitions.append(file_transitions_i)
+                file_transitions = []
+                for i in range(len(wavenumbers)-1):
+                    nu_min_i, nu_max_i = wavenumbers[i], wavenumbers[i+1]
+                    file_transitions_i = utils.download(
+                        f'{url_base}__{nu_min_i:05d}-{nu_max_i:05d}.trans.bz2', config.input_data_dir
+                    )
+                    print(file_transitions_i)
+                    file_transitions.append(file_transitions_i)
 
         if None in [*files, file_partition, file_states, *file_transitions]:
             raise ValueError('Failed to download all urls.')
@@ -201,7 +210,10 @@ class LBL_ExoMol(LineByLine):
             input_file (str): Path to the input file.
             **kwargs: Additional arguments.
         """
-        self._read_states()
+        if not hasattr(self, 'states_ID'):
+            print('  Reading states file')
+            # Read the states file if it hasn't been read yet
+            self._read_states()
 
         print(f'  Reading transitions from \"{input_file}\"')
         i = 0

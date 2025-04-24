@@ -36,6 +36,10 @@ def main():
         '--convert_to_pRT3', action='store_true', help='Convert to petitRADTRANS v3 format.'
     )
     parser.add_argument(
+        '--save_in_one_file', action='store_true', default=False,
+        help='Save all temporary outputs in one file.'
+    )
+    parser.add_argument(
         '--progress_bar', '-pbar', action='store_true', default=False, 
         help='Show progress bar during calculations.'
     )
@@ -81,9 +85,11 @@ def main():
             progress_bar=args.progress_bar, 
             files_range=args.files_range, 
             overwrite=args.overwrite,
+            save_in_one_file=args.save_in_one_file,
         )
     if args.save:
         data.save_combined_outputs(
+            progress_bar=args.progress_bar,
             overwrite=args.overwrite, 
         )
     if args.plot:
