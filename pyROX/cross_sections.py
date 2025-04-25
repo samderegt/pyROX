@@ -204,9 +204,13 @@ class CrossSections:
                 itertools.product(P, T), itertools.product(range(len(P)),range(len(T)))
                 )
             for PT, (j,k) in iterables:
-                idx_P = np.argwhere((P_main == PT[0])).flatten()[0]
-                idx_T = np.argwhere((T_main == PT[1])).flatten()[0]
-
+                idx_P = np.argwhere(
+                    np.isclose(P_main, PT[0], rtol=1e-5, atol=0.)
+                    ).flatten()[0]
+                idx_T = np.argwhere(
+                    np.isclose(T_main, PT[1], rtol=1e-5, atol=0.)
+                    ).flatten()[0]
+                
                 for key in keys_to_merge:
 
                     # Current data
@@ -309,6 +313,10 @@ class CrossSections:
             if sum_outputs:
                 assert np.isclose(P_main, P, rtol=1e-5, atol=0.).all(), "Pressure grids are not compatible."
                 assert np.isclose(T_main, T, rtol=1e-5, atol=0.).all(), "Temperature grids are not compatible."
+
+                # Make an exact copy to avoid extending the arrays
+                P = P_main.copy()
+                T = T_main.copy()
 
             # Add the PT combination
             for PT in itertools.product(P, T):
