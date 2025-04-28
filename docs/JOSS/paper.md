@@ -35,7 +35,7 @@ affiliations:
     index: 2
   - name: Centre for Exoplanets and Habitability, University of Warwick, Gibbet Hill Road, Coventry CV4 7AL, UK
     index: 3
-date: 24 April 2025
+date: 28 April 2025
 bibliography: paper.bib
 
 ---
@@ -43,14 +43,14 @@ bibliography: paper.bib
 # Summary
 In recent years, significant advances have been made in exoplanet and brown dwarf observations. By using state-of-the-art models, astronomers can determine properties of their atmospheres, such as temperatures, the presence of clouds, or the chemical abundances of molecules and atoms. Accurate and up-to-date opacities are crucial to avoid inconclusive or biased results, but it can be challenging to compute opacity cross-sections from the line lists provided by various online databases. 
 
-We introduce `pyROX`, a user-friendly Python package to calculate molecular and atomic cross-sections. ... <!-- Summarise features (CPU, Python, custom wave/P/T-grids) -->
+We introduce `pyROX`, an easy-to-use Python package to calculate molecular and atomic cross-sections. Since `pyROX` works on CPUs, it can compute a small line list on a regular workstation, but it is also easily parallelised on a cluster for larger line lists. In addition to line opacities, `pyROX` also supports calculations of collision-induced absorption. Tutorials are provided in the online documentation, explaining the configuration parameters and different functionalities of `pyROX` (e.g. custom wavelength-, pressure-, or temperature-grid, pressure-broadening descriptions, etc.). 
 
 # Statement of need
-The advent of a new generation of telescopes and instruments has led to a dramatic increase in the quality of observations of exoplanets and brown dwarfs. For example, spectroscopic observations with JWST cover sub-stellar objects over a wide wavelength-range (1-20 um) that was previously difficult to access with ground- or space-based facilities [e.g. @Matthews_ea_2025; @Miles_ea_2023; @Rustamkulov_ea_2023]. Similarly, developments in direct-imaging instrumentation allow astronomers to measure the emission of exoplanet companions at closer separations to their host stars [e.g. @Landman_ea_2024; @Xuan_ea_2024]. Significant progress has also been made in atmospheric modelling with various software used for radiative transfer, chemistry, cloud-condensation, etc. Recently, these tools are coupled with sampling algorithms to infer properties of the observed objects [e.g. @Line_ea_2015; @Brogi_ea_2019; @Gibson_ea_2020]. 
+The advent of a new generation of telescopes and instruments has led to a dramatically increased quality in observations of exoplanets and brown dwarfs. Such sub-stellar objects are now observed over a wide wavelength range (1-20 µm) with JWST spectra [e.g. @Matthews_ea_2025; @Miles_ea_2023; @Rustamkulov_ea_2023], for instance, which was previously difficult to access. Developments in ground-based instrumentation allow astronomers to measure young exoplanet companions at closer separations to their host stars [e.g. @Landman_ea_2024; @Xuan_ea_2024] and at high spectral resolutions [e.g. ...; ...]. At the same time, progress has been made in atmospheric modelling using software for radiative transfer, chemistry, climate models, etc. [e.g. ...; ...; ...]. Recently, these observations and software are coupled with sampling algorithms to characterise the atmospheres of the sub-stellar objects [e.g. @Line_ea_2015; @Brogi_ea_2019; @Gibson_ea_2020]. 
 
 Opacity cross-sections play a key role in accurately modelling sub-stellar atmospheres. For instance, opacity governs the dominant energy transport mechanism (i.e. radiative or convective) which affects the thermal structure of the atmosphere [e.g. @Marley_ea_2021]. <!-- Explain how/when this can be an issue --> Furthermore, studies at high spectral resolution require the frequencies of transition lines to be well-determined. Inaccuracies in line-list data can result in biased abundance constraints [e.g. @Brogi_ea_2019; @de_Regt_ea_2024] or suspected non-detections of certain molecules [e.g. @de_Regt_ea_2022]. For these reasons, it is important that the most up-to-date and complete opacity data are used when studying sub-stellar atmospheres. However, it can be challenging to calculate opacity cross-sections in a computationally efficient manner for line lists from different databases which can sometimes consist of billions of transitions. 
 
-To help resolve this challenge, we present `pyROX` an easy-to-use Python package to calculate molecular and atomic cross-sections from the ExoMol, HITRAN/HITEMP, and Kurucz databases. As another important opacity source in sub-stellar atmospheres, `pyROX` supports calculations of Collision-Induced Absorption (CIA) coefficients from the HITRAN and Borysow databases. 
+To help resolve this challenge, we present `pyROX` a user-friendly Python package to calculate molecular and atomic cross-sections from the ExoMol, HITRAN/HITEMP, and Kurucz databases. As another important opacity source in sub-stellar atmospheres, `pyROX` supports calculations of Collision-Induced Absorption (CIA) coefficients from the HITRAN and Borysow databases. 
 
 ... <!-- Work pyROX or a predecessor has already been used for [@Gonzales_Picos_ea_2024?; @Siebenaler_ea_2025; @de_Regt_ea_2025] -->
 
@@ -73,7 +73,7 @@ Existing open source codes, such as [`Cthulhu`](https://github.com/MartianColoni
  -->
 
 # Acknowledgements
-...
+S.d.R. and D.G.P. acknowledge funding from NWO grant OCENW.M.21.010.
 
 # References
 
