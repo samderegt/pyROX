@@ -183,7 +183,8 @@ class LBL_Kurucz(LineByLine):
             )
         transitions = np.array(transitions)
 
-        # Oscillator strength
+        # Oscillator strength (fix occasional formatting issue)
+        transitions[:,1] = np.array([s.replace(' ', '.') for s in transitions[:,1]])
         gf = 10**transitions[:,1].astype(float)
 
         # Calculate the statistical weights as 2J+1
