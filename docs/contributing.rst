@@ -2,7 +2,7 @@
 Contributing
 ============
 
-We welcome your input and contributions to pyROX! If you have suggestions for new features, or if you have found a (potential) bug, do not hesitate to let us know by `opening an issue on GitHub <https://github.com/samderegt/pyROX/issues>`_.
+We welcome your input and contributions to pyROX! If you have suggestions for new features, or if you have found a potential bug, do not hesitate to let us know by `opening an issue on GitHub <https://github.com/samderegt/pyROX/issues>`_.
 
 Contributing code
 -----------------

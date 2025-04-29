@@ -6,10 +6,7 @@
 pyROX: Rapid Opacity X-sections
 ===============================
 
-Welcome to the pyROX documentation. pyROX is a Python package for calculating
-opacity cross-sections for sub-stellar atmospheres. It can handle line-by-line
-opacities using various databases (ExoMol, HITRAN, Kurucz) and also supports
-the calculation of collision-induced absorption.
+Welcome to the pyROX documentation! pyROX is a Python package for calculating opacity cross-sections for sub-stellar atmospheres. It can handle line opacities using various databases (ExoMol, HITRAN, Kurucz) and also supports the calculation of collision-induced absorption coefficients (HITRAN, Borysow).
 
 
 Installation
@@ -26,10 +23,7 @@ Next, navigate to the cloned directory and install the package using pip:
 .. code-block:: bash
 
    cd pyROX
-   pip install -e .
-
-The ``-e`` will install pyROX in editable mode, allowing you to make changes to the
-source code and see them reflected in your Python environment immediately.
+   pip install .
 
 
 License and Acknowledgements

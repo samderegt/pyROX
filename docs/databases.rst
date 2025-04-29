@@ -20,16 +20,20 @@ Input data files
 pyROX should be run with a ``files`` dictionary pointing to the downloaded input data in the ``input_data_dir`` directory. The following files are required for each database:
 
  - **ExoMol**: 
+
    - ``transitions`` (*list* or *str*): Line transitions in ``*.trans``-file (or compressed as ``bz2``).
    - ``states`` (*str*): State energies in ``*.states``-file (or compressed as ``bz2``).
    - ``partition_function`` (*str*): Partition function in ``*.pf``-file.
  - **HITRAN/HITEMP**: 
+
    - ``transitions`` (*list* or *str*): Line transitions in ``*.par``-file (or compressed as ``bz2``).
    - ``partition_function`` (*str*): Partition function in ``q*.txt``-file.
  - **Kurucz**: 
+
    - ``transitions`` (*str*): Line transitions in ``gf*.pos``-file.
    - ``states`` (*str*): ``*.tsv``-file (from NIST), which is used for calculating the partition function.
  - **CIA_HITRAN/CIA_Borysow**: 
+
    - ``cia`` (*list of tuples* or *list of strings*): If list of tuples, the expected structure is (``cia_file``, ``temperature_mask``, ``wavenumber_mask``). If list of strings, only filenames are expected. 
 
 Pressure-broadening information
