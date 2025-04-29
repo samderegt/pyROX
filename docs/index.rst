@@ -51,6 +51,7 @@ If you used pyROX for your research, please cite the following paper:
    :caption: Guide
 
    tutorial
+   databases
    parallelisation
    contributing
 
