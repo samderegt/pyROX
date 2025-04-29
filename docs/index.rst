@@ -52,6 +52,7 @@ If you used pyROX for your research, please cite the following paper:
 
    tutorial
    parallelisation
+   contributing
 
 .. toctree::
    :maxdepth: 2
