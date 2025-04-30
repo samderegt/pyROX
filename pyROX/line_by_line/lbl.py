@@ -231,36 +231,6 @@ class LineProfileHelper:
         Returns:
             array: Opacity cross-section on the grid.
         """
-
-        '''
-        import time
-        t_start = time.time()
-        sigma_1 = self._calculate_line_profiles_in_chunks_fixed_delta_nu(
-            nu_0, S, gamma_L, gamma_G, nu_grid, wing_cutoff_distance, delta_nu
-            )
-        print(f'  {1e3*(time.time()-t_start)/len(nu_0):.4f} ms/profile | 100,000 lines in {(time.time()-t_start)/len(nu_0)*1e5:.1f} s')
-        t_start = time.time()
-        sigma_2 = self._calculate_line_profiles_in_chunks(
-            nu_0, S, gamma_L, gamma_G, nu_grid, wing_cutoff_distance, delta_nu
-            )
-        print(f'  {1e3*(time.time()-t_start)/len(nu_0):.4f} ms/profile | 100,000 lines in {(time.time()-t_start)/len(nu_0)*1e5:.1f} s')
-        
-        rel_diff = np.abs(sigma_1-sigma_2)/sigma_1 * 100
-        rel_diff = rel_diff[np.isfinite(rel_diff)]
-        print(f'  Relative error: {np.nanmean(rel_diff):.2e} % (mean) | {np.nanmax(rel_diff):.2e} % (max)')
-
-        import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(figsize=(10,7), nrows=2)
-        ax[0].plot(nu_grid/(1e2*sc.c), sigma_1, lw=1)
-        ax[0].plot(nu_grid/(1e2*sc.c), sigma_2, lw=1)
-        ax[1].plot(nu_grid/(1e2*sc.c), np.abs(sigma_1-sigma_2)/sigma_1 * 100, lw=1)
-        ax[0].set(yscale='log')
-        #plt.yscale('log')
-        plt.savefig(self.output_data_dir / 'profile.pdf')
-        plt.close()
-
-        return sigma_1
-        '''
         if not np.isnan(self.delta_nu):
             # Fixed wavenumber spacing
             return self._calculate_line_profiles_in_chunks_fixed_delta_nu(
@@ -271,6 +241,43 @@ class LineProfileHelper:
         return self._calculate_line_profiles_in_chunks(
             nu_0, S, gamma_L, gamma_G, nu_grid, wing_cutoff_distance, delta_nu
             )
+
+    def _calculate_line_profiles_one_by_one(
+            self,
+            nu_0, 
+            strength, 
+            y, 
+            gamma_G,
+            nu_grid,
+            slice_nu_grid,
+            ):
+        """
+        Calculates line profiles one by one.
+
+        Args:
+            nu_0 (array): Transition frequencies in s^-1.
+            strength (array): Line strengths.
+            y (array): Complex part of Faddeeva coordinate.
+            gamma_G (array): Gaussian widths.
+            nu_grid (array): Wavenumber grid.
+            slice_nu_grid (array): Slices of the wavenumber grid.
+
+        Returns:
+            array: Opacity cross-section on the grid.
+        """
+
+        sigma = np.zeros_like(nu_grid)
+        for nu_0_i, strength_i, y_i, gamma_G_i, slice_nu_grid_i in zip(nu_0, strength, y, gamma_G, slice_nu_grid):
+            # Coordinates for the Faddeeva function
+            z = (nu_grid[slice_nu_grid_i]-nu_0_i)/gamma_G_i + y_i*1j
+
+            # Faddeeva function
+            R_w = np.real(wofz(z))
+
+            # Add line to total cross-section
+            sigma[slice_nu_grid_i] += strength_i*R_w
+
+        return sigma
     
     def _calculate_line_profiles_in_chunks(
             self, 
@@ -316,6 +323,10 @@ class LineProfileHelper:
         # Complex part of Faddeeva coordinate
         y = gamma_L / gamma_G
         strength = S / (gamma_G*np.sqrt(np.pi))
+
+        if N_lines_in_chunk == 1:
+            # Only one line per chunk
+            return self._calculate_line_profiles_one_by_one(nu_0, strength, y, gamma_G, nu_grid, slice_nu_grid)
 
         sigma = np.zeros_like(nu_grid)
         for ch in range(N_chunks):
@@ -800,12 +811,13 @@ class LineByLine(CrossSections, LineProfileHelper):
         idx_T = np.searchsorted(self.T_grid, T)
         self.sigma[:,idx_P,idx_T] += sigma
 
-    def calculate_temporary_outputs(self, overwrite=False, files_range=None, **kwargs):
+    def calculate_temporary_outputs(self, overwrite=False, save_in_one_file=False, files_range=None, **kwargs):
         """
         Calculates temporary outputs for cross-sections.
 
         Args:
             overwrite (bool): Whether to overwrite existing files.
+            save_in_one_file (bool): Whether to save all outputs in one file.
             files_range (tuple, optional): Range of files to process.
             **kwargs: Additional arguments.
         """
@@ -824,19 +836,22 @@ class LineByLine(CrossSections, LineProfileHelper):
             transitions_files, overwrite_all=overwrite
             )
 
+        self.sigma = np.zeros(
+            (len(self.nu_grid), len(self.P_grid), len(self.T_grid)), dtype=float
+            )
         for input_file, tmp_output_file in zip(transitions_files, tmp_output_files):
             
             # Compute the cross-sections
-            self.sigma = np.zeros(
-                (len(self.nu_grid), len(self.P_grid), len(self.T_grid)), dtype=float
-                )
             self.process_transitions(input_file, **kwargs)
 
             if np.all(self.sigma == 0.):
                 print(f'  No lines calculated, no need to save \"{tmp_output_file}\"')
                 continue
-            print(f'  Saving temporary cross-sections to \"{tmp_output_file}\"')
 
+            if save_in_one_file and (tmp_output_file != tmp_output_files[-1]):
+                continue
+
+            print(f'  Saving temporary cross-sections to \"{tmp_output_file}\"')
             self.sigma[(self.sigma == 0.)] = 1e-250
 
             # Temporarily save the data
@@ -1067,10 +1082,11 @@ class LineByLine(CrossSections, LineProfileHelper):
         data['wnrange'] = [1e4 / wave_max, 1e4 / wave_min]  # [cm^-1]
 
         # Complete the filename
-        isotopologue_id = '-'.join([
-            f'{mass_number}{element}' for element, mass_number in \
-            pRT3_metadata['isotopologue_id'].items()
-            ])
+        isotopologue_id = pRT3_metadata['isotopologue_id']
+        if isinstance(isotopologue_id, dict):
+            isotopologue_id = '-'.join([
+                f'{mass_number}{element}' for element, mass_number in isotopologue_id.items()
+                ])
         
         linelist = pRT3_metadata.get('linelist', self.database.capitalize())
         if linelist in ['Hitran', 'Hitemp']:

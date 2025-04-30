@@ -2,7 +2,7 @@ name: Draft PDF
 on:
   push:
     paths:
-      - 'docs/**'
+      - 'docs/JOSS/**'
 
 jobs:
   paper:
