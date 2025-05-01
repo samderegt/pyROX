@@ -118,33 +118,42 @@ def test_lbl_exomol():
         transitions=transitions_file, 
         partition_function=partition_function_file
     )
-    config = setup_lbl_config(config, files)
+    config = setup_lbl_config(config, files, resolution=1e4) # Test fixed resolution
 
     # Compare the line profiles to a reference file
     compare_outputs(config, reference_data_dir/'exomol_xsec.txt')
-    
-def setup_lbl_config(config, files):
+
+def setup_lbl_config(config, files, resolution=np.nan):
     """
     Set up the configuration for the line profile calculation.
 
     Args:
         config (module): Configuration module containing the parameters.
         files (dict): Dictionary containing the paths to the input files.
+        resolution (float): Resolution of the line profile calculation.
 
     Returns:
         module: Updated configuration module.
     """
-    # Update the configuration object
-    config = utils.update_config_with_args(    
+    kwargs = dict(
         config=config, 
         output_data_dir=output_data_dir, 
         input_data_dir=input_data_dir, 
         files=files, 
         P_grid=np.logspace(-4, 2, 5), T_grid=2000., # [bar], [K]
-        nu_min=1, nu_max=200, delta_nu=0.01, adaptive_nu=True,
-        wave_file='', delta_wave=np.nan, resolution=np.nan, # delta_nu is used
+        nu_min=1, nu_max=200, wave_file='', adaptive_nu=False, 
+        delta_nu=0.1, delta_wave=np.nan, resolution=resolution, # delta_nu is used
         perturber_info={'H2':{'VMR':1.0,'gamma':0.07,'n':0.5}}
     )
+
+    if not np.isnan(resolution):
+        kwargs['resolution'] = resolution
+        kwargs['wave_min'] = 90
+        kwargs['wave_max'] = 120
+        kwargs['delta_nu'] = np.nan
+        
+    # Update the configuration object
+    config = utils.update_config_with_args(**kwargs)
     return config
 
 

@@ -149,6 +149,42 @@ class LineProfileHelper:
         """
         return 0.5346*gamma_L+np.sqrt(0.2166*gamma_L**2 + gamma_G**2) # [s^-1]
 
+    def _bin_transitions_for_local_cutoff(self, nu_0):
+        """
+        Bins the transitions to the nearest sub-sampled grid point.
+
+        Args:
+            nu_0 (array): Transition frequencies in s^-1.
+
+        Returns:
+            array: Indices of transitions per bin.
+        """
+
+        # Mask the grid to reduce array sizes
+        idx_l = np.searchsorted(self.nu_grid, nu_0.min()) - 2
+        idx_l = np.maximum(idx_l, 0)
+        idx_h = np.searchsorted(self.nu_grid, nu_0.max()) + 2
+        idx_h = np.minimum(idx_h, len(self.nu_grid))
+
+        # Divide the grid into sub-sampled bins
+        nu_grid_fine = self.nu_grid[idx_l:idx_h]
+        delta_nu_fine = (
+            np.linspace(0., 1., self.sub_sampling_local_cutoff, endpoint=False)[None,:] * 
+            np.diff(nu_grid_fine)[:,None]
+            )
+        nu_grid_fine = np.sort((nu_grid_fine[:-1,None] + delta_nu_fine).flatten())
+        
+        # Bin the lines to the nearest (fine) grid point
+        nu_bin = np.searchsorted(nu_grid_fine, nu_0)
+        nu_bin = np.maximum(nu_bin, 0) # First and last bin
+        nu_bin = np.minimum(nu_bin, nu_grid_fine.size-1)
+
+        # Upper and lower indices of lines within bins
+        _, nu_bin_idx = np.unique(nu_bin, return_index=True)
+        nu_bin_idx    = np.append(nu_bin_idx, len(nu_bin))
+        
+        return nu_bin_idx
+
     def apply_local_cutoff(self, S, nu_0, factor):
         """
         Applies local cutoff to line strengths. Retain lines with 
@@ -165,26 +201,17 @@ class LineProfileHelper:
         if factor == 0.:
             return S
 
-        # Bin the lines to the nearest grid point
-        if not np.isnan(self.delta_nu):
-            # Equal wavenumber-spacing, use increased resolution
-            nu_bin = np.around((nu_0-self.nu_min)/self.delta_nu_local_cutoff).astype(int)
-
-        else:
-            # Other spacing, use native resolution
-            nu_bin = np.searchsorted(self.nu_grid[:-1]-np.diff(self.nu_grid)/2, nu_0)
-            nu_bin = np.maximum(nu_bin, 0) # First and last bin
-            nu_bin = np.minimum(nu_bin, len(self.nu_grid)-1)
-
-        # Upper and lower indices of lines within bins
-        _, nu_bin_idx = np.unique(nu_bin, return_index=True)
-        nu_bin_idx    = np.append(nu_bin_idx, len(nu_bin))
+        # Bin the lines to the nearest sub-sampled grid point
+        nu_bin_idx = self._bin_transitions_for_local_cutoff(nu_0)
          
         for k in range(len(nu_bin_idx)-1):
-            # All lines in this bin
-            S_range = S[nu_bin_idx[k]:nu_bin_idx[k+1]]
-            if len(S_range) < 2:
+            idx_l = nu_bin_idx[k]
+            idx_h = nu_bin_idx[k+1]
+            if idx_h-idx_l < 2:
                 continue # One/no lines in bin
+
+            # All lines in this bin
+            S_range = S[idx_l:idx_h]
 
             # Sort by line-strength
             idx_sort = np.argsort(S_range)
@@ -192,17 +219,20 @@ class LineProfileHelper:
             S_cumsum = np.cumsum(S_sort)
 
             # Lines contributing less than 'factor' to total strength
-            i_search = np.searchsorted(S_cumsum, factor*S_cumsum[-1])
-            S_cutoff = S_sort[i_search]
+            S_cutoff = S_cumsum[-1] * factor
+            i_search = np.searchsorted(S_cumsum, S_cutoff)
+            if i_search == 0:
+                continue # No lines are weak enough
 
-            # Add weak line-strengths to strongest line
-            S_sum_others = S_cumsum[i_search-1]
-            S_range[idx_sort[-1]] += S_sum_others
+            # Add weaker line-strengths to strongest line
+            S_cumsum_weak = S_cumsum[i_search-1]
+            S_range[idx_sort[-1]] += S_cumsum_weak
 
             # Ignore weak lines
-            S_range[S_range<S_cutoff] = 0.
+            S_above_cutoff = S_sort[i_search]
+            S_range[S_range<S_above_cutoff] = 0.
 
-            S[nu_bin_idx[k]:nu_bin_idx[k+1]] = S_range
+            S[idx_l:idx_h] = S_range
 
         return S
     
@@ -311,13 +341,11 @@ class LineProfileHelper:
         N_chunks = int(np.ceil(len(S)/N_lines_in_chunk))
         N_nu_grid = len(nu_grid)
 
-        # Indices to insert the lines back into nu_grid
-        idx_nu_grid = np.searchsorted(nu_grid, nu_0) - 1
-        wing_length = int(np.ceil((wing_cutoff_distance)/delta_nu))
-
         # Left and right indices of the line profile within the grid
-        idx_nu_grid_l = np.maximum(0, idx_nu_grid-wing_length)
-        idx_nu_grid_h = np.minimum(N_nu_grid, idx_nu_grid+wing_length+1)
+        idx_nu_grid_l = np.searchsorted(nu_grid, nu_0-wing_cutoff_distance) - 1
+        idx_nu_grid_l = np.maximum(0, idx_nu_grid_l)
+        idx_nu_grid_h = np.searchsorted(nu_grid, nu_0+wing_cutoff_distance)
+        idx_nu_grid_h = np.minimum(N_nu_grid, idx_nu_grid_h)
         slice_nu_grid = [slice(idx_nu_grid_l[i], idx_nu_grid_h[i]) for i in range(len(nu_0))]
 
         # Complex part of Faddeeva coordinate
@@ -527,8 +555,7 @@ class LineByLine(CrossSections, LineProfileHelper):
 
         self.local_cutoff = getattr(self.config, 'local_cutoff', 0.)  # [fraction of cumulative]
         # Finer resolution to determine which lines to keep
-        self.delta_nu_local_cutoff = getattr(self.config, 'delta_nu_local_cutoff', 1e-3) # [cm^-1]
-        self.delta_nu_local_cutoff *= 1e2*sc.c # [cm^-1] -> [s^-1]
+        self.sub_sampling_local_cutoff = getattr(self.config, 'sub_sampling_local_cutoff', 5)
 
         # (P,T)-grid to calculate cross-sections on
         self.P_grid = np.atleast_1d(self.config.P_grid) * 1e5 # [bar] -> [Pa]
