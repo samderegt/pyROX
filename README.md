@@ -2,6 +2,7 @@
 [![License](https://img.shields.io/github/license/samderegt/pyROX)](https://github.com/samderegt/pyROX/blob/main/LICENSE)
 [![Python Tests](https://github.com/samderegt/pyROX/actions/workflows/python-tests.yml/badge.svg)](https://github.com/samderegt/pyROX/actions/workflows/python-tests.yml)
 [![JOSS Status](https://joss.theoj.org/papers/8f2ed067c20eaa7090b1dc1bfbbe0f54/status.svg)](https://joss.theoj.org/papers/8f2ed067c20eaa7090b1dc1bfbbe0f54)
+[![DOI](https://zenodo.org/badge/741357520.svg)](https://doi.org/10.5281/zenodo.17112047)
 
 # pyROX: Rapid Opacity X-sections
 A Python package for computing opacity cross-sections and collision-induced absorption coefficients for applications in models of (exo)-planetary and (sub)-stellar atmospheres. pyROX currently supports line opacity calculations from the ExoMol, HITRAN, HITEMP, and Kurucz databases. Collision-induced absorption coefficients can also be computed using the HITRAN and Borysow databases. 
