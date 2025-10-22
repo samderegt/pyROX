@@ -11,7 +11,7 @@ def read_requirements():
 
 setup(
     name="pyROX",
-    version="1.0.0",
+    version="1.0.1",
     author="Sam de Regt",
     author_email="regt@strw.leidenuniv.nl",
     description="pyROX: Rapid Opacity X-sections",
@@ -19,6 +19,10 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/samderegt/pyROX",  # Update with your repository URL
     packages=find_packages(),  # Automatically find package directories
+    include_package_data=True, 
+    package_data={
+        "pyROX": ["data/*","data/*/*"],  # Include data files in the package
+    },
     install_requires=read_requirements(),  # Read dependencies from requirements.txt
     classifiers=[
         "Programming Language :: Python :: 3",
