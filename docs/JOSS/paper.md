@@ -35,7 +35,7 @@ affiliations:
     index: 2
   - name: Centre for Exoplanets and Habitability, University of Warwick, Gibbet Hill Road, Coventry CV4 7AL, UK
     index: 3
-date: 30 April 2025
+date: 02 February 2026
 bibliography: paper.bib
 
 ---
@@ -51,27 +51,35 @@ The advent of a new generation of telescopes and instruments has led to a dramat
 
 Opacity cross-sections play a key role in accurately modelling sub-stellar atmospheres. Opacity governs the dominant energy transport mechanism (i.e. radiation or convection) which affects the thermal structure of the atmosphere [@Marley_ea_2021]. Furthermore, high-resolution studies require well-determined frequencies for the transition lines. Inaccuracies in line-list data can result in biased abundance constraints [e.g. @Brogi_ea_2019; @de_Regt_ea_2024] or ambiguous (non)-detections of certain molecules [e.g. @de_Regt_ea_2022; @Merritt_ea_2020; @Serindag_ea_2021]. It is therefore important that the most up-to-date and complete opacity data are used. However, it can be difficult to efficiently calculate opacity cross-sections from line lists that sometimes consist of billions of transitions. 
 
-To help resolve this challenge, we present `pyROX`, a user-friendly Python package to calculate molecular and atomic cross-sections for applications in models of sub-stellar atmospheres. `pyROX` supports line opacity calculations from the ExoMol [@Tennyson_ea_2024], HITRAN [@Gordon_ea_2022], HITEMP [@Rothman_ea_2010], and Kurucz[^1] databases. Collision-Induced Absorption (CIA) coefficients can also be calculated from the HITRAN and Borysow[^2] databases. So far, `pyROX`-computed cross-sections have enabled several recent publications from our research group [@de_Regt_ea_2025; @Siebenaler_ea_2025].
+To help resolve this challenge, we present `pyROX`, a user-friendly Python package to calculate molecular and atomic cross-sections for applications in models of sub-stellar atmospheres. `pyROX` supports line opacity calculations from the ExoMol [@Tennyson_ea_2024], HITRAN [@Gordon_ea_2022], HITEMP [@Rothman_ea_2010], and Kurucz[^1] databases. Collision-Induced Absorption (CIA) coefficients can also be calculated from the HITRAN and Borysow[^2] databases. 
 
 [^1]: [http://kurucz.harvard.edu/](http://kurucz.harvard.edu/)
 [^2]: [https://www.astro.ku.dk/~aborysow/programs/index.html](https://www.astro.ku.dk/~aborysow/programs/index.html)
 
 
-# Functionality of `pyROX`
-Documentation for `pyROX` is available at [https://py-rox.readthedocs.io/en/latest/](https://py-rox.readthedocs.io/en/latest/) and includes tutorial examples to running the code. Here, we outline the main functionality of `pyROX`:
-
-- **Download and read files**: The necessary input files (line lists, partition functions, broadening coefficients or CIA files) can be downloaded with a simple command. When reading the relevant parameters, `pyROX` handles the different data structures of the supported databases (ExoMol, HITRAN/HITEMP, Kurucz, Borysow). 
-- **Compute line-strengths and -widths**: For line-opacity calculations, `pyROX` calculates the strength and broadening-widths for each line transition at the user-provided pressure and temperature. Support is offered for various [pressure-broadening descriptions](https://py-rox.readthedocs.io/en/latest/notebooks/pressure_broadening.html). `pyROX` can speed up the line-profile computation by selecting only the main line-strength contributors.
-- **Compute line profiles**: Next, `pyROX` computes the Voigt profiles as the real part of the Faddeeva function [Eq. 12 of @Gandhi_ea_2020], using the `scipy.special.wofz` implementation[^3]. 
-- **Combine and save**: The line profiles are summed into wavelength-dependent cross-sections for each temperature-pressure point. These cross-sections are saved into an efficient HDF5 output file. For CIA calculations, `pyROX` restructures the coefficients read from the input files into a wavelength- and temperature-dependent grid and also saves these data to an HDF5 file.
-
-Currently, `pyROX` offers built-in support for converting its output into the high-resolution opacities used by petitRADTRANS [@Molliere_ea_2019]. In future releases, we plan to add conversions for other radiative transfer codes that are popular in the exoplanet and brown dwarf community. We welcome suggestions for new features, which can be done by [opening an issue](https://github.com/samderegt/pyROX/issues) on GitHub. If you want to contribute to `pyROX`, please read the [documented guidelines](https://py-rox.readthedocs.io/en/latest/contributing.html).
-
-[^3]: [https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.wofz.html](https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.wofz.html)
-
-
-# Similar tools
+# State of the field
 Existing open source codes, such as [`Cthulhu`](https://github.com/MartianColonist/Cthulhu) [@Agrawal_ea_2024], [`ExoCross`](https://github.com/Trovemaster/exocross) [@Yurchenko_ea_2018; @Zhang_ea_2024] and [`HELIOS-K`](https://github.com/exoclime/HELIOS-K) [@Grimm_ea_2015; @Grimm_ea_2021], can calculate cross-sections at comparable performances to `pyROX`. However, `ExoCross` is written in Fortran and `HELIOS-K` utilises GPU-acceleration which can limit their use to experts with the appropriate hardware. `pyROX` is a Python code that runs only on CPUs which should make it accessible for the opacity needs of most astronomers. Notably, `pyROX` supports cross-section calculations on any user-provided wavelength or wavenumber grid. This enables the user to fix the spectral resolution ($\mathcal{R}=\lambda/\Delta\lambda$) which cannot be achieved with equal wavelength- or wavenumber-spacing.
+
+
+# Software design
+We aim to provide an easy-to-use, comprehensive, and efficient tool to calculate cross-sections for atmospheric gases. These objectives are reflected in the main workflow of `pyROX`:
+
+- **Download and read files**: The necessary input files (line lists, partition functions, broadening coefficients or CIA files) can be downloaded with a simple command. When reading the relevant parameters, `pyROX` automatically handles the different data structures of the supported databases (ExoMol, HITRAN/HITEMP, Kurucz, Borysow). 
+- **Compute line-strengths and -widths**: For line-opacity calculations, `pyROX` calculates the strength and broadening-widths for each line transition at the user-provided pressure and temperature. Support is offered for various [pressure-broadening descriptions](https://py-rox.readthedocs.io/en/latest/notebooks/pressure_broadening.html). At this point, `pyROX` can speed up the line-profile computation by selecting only the main line-strength contributors.
+- **Compute line profiles**: Next, `pyROX` computes the Voigt profiles as the real part of the Faddeeva function [Eq. 12 of @Gandhi_ea_2020]. Although faster approximations exist [@Schreier_2018], we currently support only the more accurate `scipy.special.wofz` implementation[^3]. 
+- **Combine and save**: The line profiles are summed into wavelength-dependent cross-sections for each temperature-pressure point. These cross-sections are saved into an efficient HDF5 output file. For CIA calculations, `pyROX` restructures the coefficients read from the input files into a wavelength- and temperature-dependent grid and also saves these data to an HDF5 file. `pyROX` offers built-in support for converting its output into the high-resolution opacities used by petitRADTRANS [@Molliere_ea_2019]. In future releases, we plan to add conversions for other radiative transfer codes popular in the exoplanet and brown dwarf communities. 
+
+Documentation for `pyROX` is available at [https://py-rox.readthedocs.io/en/latest/](https://py-rox.readthedocs.io/en/latest/) and includes examples to run the code. The detailed tutorials allow new users to get up to speed with the available options and functionalities. We also welcome suggestions for new features, which can be done by [opening an issue](https://github.com/samderegt/pyROX/issues) on GitHub. If you want to contribute to `pyROX`, please read the [documented guidelines](https://py-rox.readthedocs.io/en/latest/contributing.html).
+
+[^3]: [https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.wofz.html](https://docs.scipy.org/doc/scipy/reference/generated/scipy.special.wofz.html) 
+
+
+# Research impact statement
+Recent publications from our team have employed `pyROX`-computed cross-sections [e.g. @de_Regt_ea_2025; @Gonzalez_Picos_ea_2025b; @Gonzalez_Picos_ea_2025c; @Siebenaler_ea_2025; @Siebenaler_ea_2025b] and this reach is currently expanding to other research groups as well [e.g @van_Sluijs_ea_2025; @Zhang_ea_2026].
+
+
+# AI usage disclosure
+Generative AI tools (GPT-4o) were used in the writing of docstrings and code re-factoring. All AI-generated additions or changes were reviewed and edited by the authors to verify that the intended functionality was maintained. No AI tools were used in the writing of this paper and online documentation.
 
 
 # Acknowledgements
