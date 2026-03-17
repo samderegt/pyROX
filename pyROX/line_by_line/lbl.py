@@ -429,7 +429,7 @@ class LineProfileHelper:
         N_chunks = int(np.ceil(len(S)/N_lines_in_chunk))
         N_nu_grid = len(nu_grid)
 
-        # Construct the temporary line-profile grid        
+        # Construct the temporary line-profile grid
         nu_line = np.arange(0, wing_cutoff_distance+delta_nu, delta_nu)
         nu_line = np.concatenate([-nu_line[1:][::-1], nu_line])
         nu_line = np.repeat(nu_line[None,:], N_lines_in_chunk, axis=0)
@@ -809,7 +809,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         # Change to a coarse grid if lines are substantially broadened
         gamma_V = self.compute_voigt_width(gamma_G, gamma_L) # Voigt width
         nu_grid_to_use = self._setup_coarse_nu_grid(adaptive_delta_nu=np.mean(gamma_V)/6)
-        delta_nu_to_use = np.diff(nu_grid_to_use[:2]) # [s^-1]
+        delta_nu_to_use = nu_grid_to_use[1]-nu_grid_to_use[0] # [s^-1]
         
         # Wing cutoff from given lambda-function
         wing_cutoff_distance = self.wing_cutoff(np.mean(gamma_V), P) # [s^-1]

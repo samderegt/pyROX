@@ -29,7 +29,7 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.7",
+    python_requires=">=3.10",
     entry_points={
         "console_scripts": [
             "pyROX=pyROX.main:main", # Execute the main function in pyROX/main.py
