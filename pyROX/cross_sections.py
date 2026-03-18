@@ -463,7 +463,7 @@ class CrossSections:
 
         self.delta_nu   = getattr(self.config, 'delta_nu', np.nan) # [cm^-1]
         self.delta_nu   = self.delta_nu * 1e2*sc.c # [s^-1]
-        self.delta_wave = getattr(self.config, 'self.delta_wave', np.nan) # [um]
+        self.delta_wave = getattr(self.config, 'delta_wave', np.nan) # [um]
         self.delta_wave = self.delta_wave * sc.micron # [um] -> [m]
         
         self.wave_min = getattr(self.config, 'wave_min', 1.0/3.0) # [um]

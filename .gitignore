@@ -5,9 +5,12 @@ examples/*/*.pdf
 examples/*/*.h5
 examples/*/*.hdf5
 
+build/
+
 pyROX.egg-info/
 
 docs/_build/
+docs/notebooks/examples/
 
 convert_all.ipynb
 *.code-workspace
