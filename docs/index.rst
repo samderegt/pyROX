@@ -37,7 +37,22 @@ If you used pyROX for your research, please cite the following paper:
 
 .. code-block:: bibtex
 
-   PLACEHOLDER
+   @ARTICLE{2025arXiv251020870D,
+         author = {{de Regt}, Sam and {Gandhi}, Siddharth and {Siebenaler}, Louis and {Gonz{\'a}lez Picos}, Dar{\'\i}o},
+         title = "{pyROX: Rapid Opacity X-sections}",
+         journal = {arXiv e-prints},
+      keywords = {Instrumentation and Methods for Astrophysics, Earth and Planetary Astrophysics},
+            year = 2025,
+         month = oct,
+            eid = {arXiv:2510.20870},
+         pages = {arXiv:2510.20870},
+            doi = {10.48550/arXiv.2510.20870},
+   archivePrefix = {arXiv},
+         eprint = {2510.20870},
+   primaryClass = {astro-ph.IM},
+         adsurl = {https://ui.adsabs.harvard.edu/abs/2025arXiv251020870D},
+         adsnote = {Provided by the SAO/NASA Astrophysics Data System}
+   }
    
 
 .. toctree::

@@ -8,8 +8,8 @@ output_data_dir = './examples/cia_hitran_h2_h2/'
 
 # Instructions to download from HITRAN database
 urls = [
-    'https://hitran.org/data/CIA/H2-H2_2011.cia', 
-    'https://hitran.org/data/CIA/supplementary/H2-H2_eq_2018.cia', # Extends to lower temperatures
+    'https://hitran.org/data/CIA/main/H2-H2_2011.cia', 
+    'https://hitran.org/data/CIA/alternate/H2-H2_eq_2018.cia', # Extends to lower temperatures
 ]
 
 # Wavenumber grid

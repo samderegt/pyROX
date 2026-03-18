@@ -6,7 +6,8 @@ species  = 'h2-h2'
 # Instructions to download
 urls = [
     'https://www.astro.ku.dk/~aborysow/programs/final_CIA_LT.dat',
-    'https://www.astro.ku.dk/~aborysow/programs/final_CIA_HT.dat',
+    # Note: This file has an inconsistent column-width on line 1685, causing an error when reading the data.
+    'https://www.astro.ku.dk/~aborysow/programs/final_CIA_HT.dat', 
     'https://www.astro.ku.dk/~aborysow/programs/CIA.H2H2.Yi', 
 ]
 # Input/output-directories

@@ -1,16 +1,15 @@
 __pycache__/
+pyROX.egg-info/
+build/
 
 examples/*/*/
 examples/*/*.pdf
 examples/*/*.h5
 examples/*/*.hdf5
 
-build/
-
-pyROX.egg-info/
+tests/test_output_data/
 
 docs/_build/
-docs/notebooks/examples/
 
 convert_all.ipynb
 *.code-workspace

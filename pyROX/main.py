@@ -4,6 +4,7 @@ os.environ["PYTHONUNBUFFERED"] = "1" # Enable unbuffered output
 sys.stdout.reconfigure(line_buffering=True)
 
 import pathlib
+import importlib
 import argparse
 from pyROX import cross_sections, utils
 
@@ -62,13 +63,17 @@ def main():
 
     args = parser.parse_args()
 
-    # Add the directory of the config file to the system path
-    config_dir = pathlib.Path(args.config_file).resolve().parent
-    sys.path.insert(0, str(config_dir))
+    config_file = pathlib.Path(args.config_file).resolve()
+    if not config_file.exists():
+        raise FileNotFoundError(f'Configuration file \"{config_file}\" not found.')
+    
+    # Add directory to system path to allow importing the config file as a module
+    sys.path.append(str(config_file.parent))
 
-    # Import input file as 'conf'
-    config_string = str(args.config_file).replace('.py', '').replace('/', '.')
-    config = __import__(config_string, fromlist=[''])
+    # Import input file as 'config'
+    config = importlib.import_module(
+        str(config_file.stem).replace('.py', '')
+    )
 
     # Overwrite some configuration parameters with command line arguments
     config = utils.update_config_with_args(

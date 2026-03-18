@@ -707,7 +707,10 @@ class LineByLine(CrossSections, LineProfileHelper):
         if VMR_total > 1.0:
             raise ValueError('Total volume mixing ratio of perturbers exceeds 1.0.')
         if VMR_total < 1.0:
-            utils.warnings.warn('Total volume mixing ratio of perturbers is less than 1.0.')
+            utils.warnings.warn(
+                'Total volume mixing ratio of perturbers is less than 1.0.', 
+                utils.pyROXWarning
+                )
 
         print(f'  Mean molecular weight of perturbers: {self.mean_mass/sc.amu:.2f} amu')
 
@@ -1123,8 +1126,8 @@ class LineByLine(CrossSections, LineProfileHelper):
         pRT_file = pRT_file.format(
             isotopologue_id, linelist, resolution, wave_min, wave_max
         )
-        pRT_file = self.output_data_dir / pRT_file
+        self.pRT_file = self.output_data_dir / pRT_file
 
         # Save the datasets
-        utils.save_to_hdf5(pRT_file, data=data, attrs=attrs, compression=None)
-        print(f'  Saved to \"{pRT_file}\"')
+        utils.save_to_hdf5(self.pRT_file, data=data, attrs=attrs, compression=None)
+        print(f'  Saved to \"{self.pRT_file}\"')
