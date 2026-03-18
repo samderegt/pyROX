@@ -11,7 +11,7 @@ def read_requirements():
 
 setup(
     name="pyROX",
-    version="1.0.1",
+    version="1.0.2",
     author="Sam de Regt",
     author_email="regt@strw.leidenuniv.nl",
     description="pyROX: Rapid Opacity X-sections",
