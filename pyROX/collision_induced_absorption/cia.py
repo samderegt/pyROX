@@ -251,8 +251,8 @@ class CIA(CrossSections):
             self.database.replace('cia_','').upper(), resolution, 
             wave_min, wave_max
             )
-        pRT_file = self.output_data_dir / pRT_file
+        self.pRT_file = self.output_data_dir / pRT_file
 
         # Save the datasets
-        utils.save_to_hdf5(pRT_file, data=data, attrs=attrs, compression=None)
-        print(f'  Saved to \"{pRT_file}\"')
+        utils.save_to_hdf5(self.pRT_file, data=data, attrs=attrs, compression=None)
+        print(f'  Saved to \"{self.pRT_file}\"')

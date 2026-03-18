@@ -8,13 +8,13 @@ isotope_idx = 1
 isotope_abundance = 9.86544e-1
 
 # Input/output-directories
-input_data_dir  = './input_data/'
-output_data_dir = './'
+input_data_dir  = './examples/hitemp_co/input_data/'
+output_data_dir = './examples/hitemp_co/'
 
 # Instructions to download from HITEMP database
 urls = [
     # Transitions (see https://hitran.org/hitemp/)
-    'https://hitran.org/hitemp/data/bzip2format/05_HITEMP2019.par.bz2', 
+    'https://hitran.org/files/HITEMP/bzip2format/05_HITEMP2019.par.bz2', 
 
     # Partition function (see https://hitran.org/docs/iso-meta/)
     'https://hitran.org/data/Q/q26.txt', 
