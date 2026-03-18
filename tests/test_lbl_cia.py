@@ -206,7 +206,7 @@ def setup_cia_config(config, files):
         input_data_dir=input_data_dir, 
         files=files, 
         T_grid=2000., # [K]
-        nu_min=1, nu_max=200, delta_nu=1.0, adaptive_nu=False,
+        nu_min=20, nu_max=200, delta_nu=1.0, adaptive_nu=False,
         wave_file='', delta_wave=np.nan, resolution=np.nan, # delta_nu is used
     )
     return config

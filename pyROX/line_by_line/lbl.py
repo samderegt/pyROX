@@ -707,7 +707,10 @@ class LineByLine(CrossSections, LineProfileHelper):
         if VMR_total > 1.0:
             raise ValueError('Total volume mixing ratio of perturbers exceeds 1.0.')
         if VMR_total < 1.0:
-            utils.warnings.warn('Total volume mixing ratio of perturbers is less than 1.0.')
+            utils.warnings.warn(
+                'Total volume mixing ratio of perturbers is less than 1.0.', 
+                utils.pyROXWarning
+                )
 
         print(f'  Mean molecular weight of perturbers: {self.mean_mass/sc.amu:.2f} amu')
 

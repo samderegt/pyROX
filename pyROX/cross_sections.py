@@ -383,7 +383,7 @@ class CrossSections:
                 # Ask the user if they want to overwrite the file
                 response = ''
                 while response not in ['y', 'yes', 'n', 'no', 'all']:
-                    response = input(f'  Warning: Output file \"{output_file}\" already exists. Overwrite? (yes/no/all): ')
+                    response = input(f'[pyROXWarning] Output file \"{output_file}\" already exists. Do you want to overwrite it? (yes/no/all): ')
                     response = response.strip().lower()
                     if response in ['no', 'n']:
                         raise FileExistsError(f'Not overwriting existing file: \"{output_file}\".')

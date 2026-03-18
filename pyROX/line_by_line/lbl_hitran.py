@@ -58,7 +58,8 @@ class LBL_HITRAN(LineByLine):
         print(f'\nIsotope index: {self.isotope_idx}, with abundance {self.isotope_abundance:.2e}')
         if self.isotope_abundance == 1.0:
             utils.warnings.warn(
-                'HITRAN line-strengths are scaled by the terrestrial isotope abundance. A value of 1.0 may be incorrect.'
+                'HITRAN line-strengths are scaled by the terrestrial isotope abundance. A value of 1.0 may be incorrect.', 
+                utils.pyROXWarning
             )
 
         # Remove any quantum-number dependency
