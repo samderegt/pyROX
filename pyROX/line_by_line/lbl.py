@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from pandas import read_fwf
 from scipy.interpolate import interp1d
@@ -739,6 +740,27 @@ class LineByLine(CrossSections, LineProfileHelper):
             progress_bar (bool): Whether to show a progress bar.
             **kwargs: Additional arguments for the function.
         """
+        from joblib import Parallel, delayed
+
+        # Make a nice progress bar
+        pbar_kwargs = dict(
+            total=self.N_PT, disable=(not progress_bar), 
+            bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}', 
+        )
+
+        PTs = [(P, T) for P in self.P_grid for T in self.T_grid]
+
+        outputs = Parallel(n_jobs=self.N_CPUs)(
+            delayed(function)(P, T, **kwargs) for (P, T) in tqdm(PTs, **pbar_kwargs)
+            )
+        
+        for (P, T), sigma_i in zip(PTs, outputs):
+            idx_P = np.searchsorted(self.P_grid, P)
+            idx_T = np.searchsorted(self.T_grid, T)
+            
+            self.sigma[:,idx_P,idx_T] += sigma_i
+
+        return
         # Make a nice progress bar
         pbar_kwargs = dict(
             total=self.N_PT, disable=(not progress_bar), 
@@ -836,10 +858,7 @@ class LineByLine(CrossSections, LineProfileHelper):
             # Interpolate to the original grid
             sigma = np.interp(self.nu_grid, nu_grid_to_use, sigma)
 
-        # Add to the total array
-        idx_P = np.searchsorted(self.P_grid, P)
-        idx_T = np.searchsorted(self.T_grid, T)
-        self.sigma[:,idx_P,idx_T] += sigma
+        return sigma
 
     def calculate_temporary_outputs(self, overwrite=False, save_in_one_file=False, files_range=None, **kwargs):
         """
