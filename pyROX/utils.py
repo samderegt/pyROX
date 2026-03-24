@@ -19,8 +19,18 @@ sc.m_H2 = 2.01588*sc.amu  # [kg]
 sc.m_He = 4.002602*sc.amu # [kg]
 sc.alpha_H = 0.666793e-30 # Polarisability [m^3]
 
-# Set up custom warning message
-warnings.showwarning = lambda m, c, f, l, *_: print(f'{f}:{l} {c.__name__}: {m}')
+class pyROXWarning(Warning):
+    pass
+
+# Set up custom warning message only for pyROXWarning
+_original_showwarning = warnings.showwarning
+def _custom_showwarning(message, category, filename, lineno, *args):
+    if category == pyROXWarning:
+        # print(f'{filename}:{lineno} {category.__name__}: {message}')
+        print(f'[{category.__name__}] {message}')
+    else:
+        _original_showwarning(message, category, filename, lineno, *args)
+warnings.showwarning = _custom_showwarning
 
 def download(url, out_dir, out_name=None):
     """
@@ -44,7 +54,8 @@ def download(url, out_dir, out_name=None):
     out_name = pathlib.Path(out_dir) / out_name
 
     if pathlib.Path(out_name).is_file():
-        print(f'  File \"{out_name}\" already exists, skipping download')
+        # print(f'  File \"{out_name}\" already exists, skipping download')
+        warnings.warn(f'File \"{out_name}\" already exists, skipping download.', pyROXWarning)
         return str(out_name)
     else:
         print(f'  Downloading \"{url}\"')
@@ -53,7 +64,7 @@ def download(url, out_dir, out_name=None):
     try:
         tmp_file = wget.download(url, out=str(out_dir))
     except Exception as e:
-        warnings.warn(f'Failed to download \"{url}\": {e}')
+        warnings.warn(f'Failed to download \"{url}\": {e}', pyROXWarning)
 
         try:
             # If wget fails, try using requests
@@ -68,7 +79,7 @@ def download(url, out_dir, out_name=None):
                 raise Exception(f'{response.status_code} - {response.reason}')
 
         except Exception as e:
-            warnings.warn(f'Failed to download \"{url}\": {e}')
+            warnings.warn(f'Failed to download \"{url}\": {e}', pyROXWarning)
             return
     print()
     tmp_file = pathlib.Path(tmp_file)
@@ -202,9 +213,9 @@ def update_config_with_args(config=None, **kwargs):
         # Different warning messages
         if hasattr(config, key):
             old_value = getattr(config, key)
-            warnings.warn(f'Overwriting parameter \"{key}\" from {old_value} to {new_value}.')
+            warnings.warn(f'Overwriting parameter \"{key}\" from {old_value} to {new_value}.', pyROXWarning)
         else:
-            warnings.warn(f'Adding parameter \"{key}\" as {new_value}.')
+            warnings.warn(f'Adding parameter \"{key}\" as {new_value}.', pyROXWarning)
 
         # Update or add the parameter
         setattr(config, key, value)
@@ -242,9 +253,10 @@ def warn_about_units(config):
 
         keys_units_to_warn.append((key, unit))
 
-    warnings.warn('Please make sure that the following parameters are given in the expected units:')
+    warnings.warn('Please make sure that the following parameters are given in the expected units:', pyROXWarning)
     for key, unit in keys_units_to_warn:
-        print(f'  - {key} [{unit}]')
+        # print(f'  - {key} [{unit}]')
+        warnings.warn(f'- {key} [{unit}]', pyROXWarning)
     print()
 
 def find_closest_indices(a, b):

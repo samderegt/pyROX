@@ -4,8 +4,8 @@ species  = 'h2s'    # Species name
 mass = 33.987721    # Can be found in *.def.json file
 
 # Input/output-directories
-input_data_dir  = './input_data/'
-output_data_dir = './'
+input_data_dir  = './examples/exomol_h2s/input_data/'
+output_data_dir = './examples/exomol_h2s/'
 
 # Instructions to download from ExoMol database
 urls = [
