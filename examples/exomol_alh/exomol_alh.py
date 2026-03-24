@@ -3,6 +3,8 @@ database = 'exomol' # Can be ['exomol', 'hitran', 'hitemp', 'kurucz']
 species  = 'alh'    # Species name
 mass = 27.98948     # Can be found in *.def.json file
 
+N_CPUs = 4 # Number of CPUs for parallelisation
+
 # Input/output-directories
 input_data_dir  = './examples/exomol_alh/input_data/'
 output_data_dir = './examples/exomol_alh/'

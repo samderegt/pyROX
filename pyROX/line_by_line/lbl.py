@@ -7,6 +7,7 @@ from scipy.special import wofz
 import pathlib
 import datetime
 
+import joblib
 from tqdm import tqdm
 
 from pyROX import utils, sc, CrossSections
@@ -740,46 +741,37 @@ class LineByLine(CrossSections, LineProfileHelper):
             progress_bar (bool): Whether to show a progress bar.
             **kwargs: Additional arguments for the function.
         """
-        from joblib import Parallel, delayed
-
         # Make a nice progress bar
         pbar_kwargs = dict(
             total=self.N_PT, disable=(not progress_bar), 
             bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}', 
         )
 
-        PTs = [(P, T) for P in self.P_grid for T in self.T_grid]
-
-        outputs = Parallel(n_jobs=self.N_CPUs)(
-            delayed(function)(P, T, **kwargs) for (P, T) in tqdm(PTs, **pbar_kwargs)
+        # Run parallel jobs as soon as CPUs become available
+        jobs = joblib.Parallel(return_as='generator_unordered', n_jobs=self.N_CPUs)(
+            joblib.delayed(function)(P, T, **kwargs) for P in self.P_grid for T in self.T_grid
             )
-        
-        for (P, T), sigma_i in zip(PTs, outputs):
-            idx_P = np.searchsorted(self.P_grid, P)
-            idx_T = np.searchsorted(self.T_grid, T)
-            
-            self.sigma[:,idx_P,idx_T] += sigma_i
-
-        return
-        # Make a nice progress bar
-        pbar_kwargs = dict(
-            total=self.N_PT, disable=(not progress_bar), 
-            bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}', 
-        )
         with tqdm(**pbar_kwargs) as pbar:
-
-            # Loop over all PT-points
-            for idx_P, P in enumerate(self.P_grid):
-                for idx_T, T in enumerate(self.T_grid):
-
-                    function(P, T, **kwargs)
-                    postfix = {
-                        'P': f'{P*1e-5:.0e} bar', 'T': f'{T:.0f} K',
-                    }
-                    if hasattr(self, 'N_lines_computed'):
-                        postfix['N_lines_computed'] = '{}'.format(self.N_lines_computed)
-                    pbar.set_postfix(**postfix, refresh=False)
+            for output_i in jobs:
+                if output_i is None:
+                    # No lines computed
                     pbar.update(1)
+                    continue
+
+                sigma_i, P_i, T_i, N_lines_computed_i = output_i
+
+                # Insert unordered output at the correct indices
+                idx_P = np.searchsorted(self.P_grid, P_i)
+                idx_T = np.searchsorted(self.T_grid, T_i)                
+                self.sigma[:,idx_P,idx_T] += sigma_i
+
+                # Update the progress bar
+                postfix = {
+                    'P': f'{P_i*1e-5:.0e} bar', 'T': f'{T_i:.0f} K',
+                    'N_lines_computed': f'{N_lines_computed_i:.0d}', 
+                }
+                pbar.set_postfix(**postfix, refresh=False)
+                pbar.update(1)
     
     def calculate_cross_sections(self, P, T, nu_0, S_0, E_low, A, delta=None, **kwargs):
         """
@@ -795,7 +787,7 @@ class LineByLine(CrossSections, LineProfileHelper):
             delta (array, optional): Pressure shift coefficients.
             **kwargs: Additional arguments.
         """
-        self.N_lines_computed = 0
+        N_lines_computed = 0
 
         # Get the line-widths
         gamma_N   = self.compute_natural_broadening(A) # Lorentzian components
@@ -829,7 +821,7 @@ class LineByLine(CrossSections, LineProfileHelper):
         )
         if len(S) == 0:
             return # No more lines
-        self.N_lines_computed = len(S)
+        N_lines_computed = len(S)
         
         # Change to a coarse grid if lines are substantially broadened
         gamma_V = self.compute_voigt_width(gamma_G, gamma_L) # Voigt width
@@ -858,7 +850,7 @@ class LineByLine(CrossSections, LineProfileHelper):
             # Interpolate to the original grid
             sigma = np.interp(self.nu_grid, nu_grid_to_use, sigma)
 
-        return sigma
+        return sigma, P, T, N_lines_computed
 
     def calculate_temporary_outputs(self, overwrite=False, save_in_one_file=False, files_range=None, **kwargs):
         """

@@ -417,10 +417,8 @@ class CrossSections:
         self.database = getattr(self.config, 'database', None)
         self.species  = getattr(self.config, 'species', None)
 
-        self.N_CPUs = getattr(self.config, 'N_CPUs', None)
-        if self.N_CPUs is None:
-            import os
-            self.N_CPUs = os.cpu_count()
+        self.N_CPUs = getattr(self.config, 'N_CPUs', 1)
+        self.N_CPUs = max(1, int(self.N_CPUs))
 
         # Wavenumber/wavelength grid
         self._setup_nu_grid()

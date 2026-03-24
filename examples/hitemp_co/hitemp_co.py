@@ -3,6 +3,8 @@ database = 'hitemp' # Can be ['exomol', 'hitran', 'hitemp', 'kurucz']
 species  = 'co'     # Species name
 mass = 28.01
 
+N_CPUs = 4 # Number of CPUs for parallelisation
+
 # [HITRAN-specific]: .par-file includes all isotopologues
 isotope_idx = 1
 isotope_abundance = 9.86544e-1

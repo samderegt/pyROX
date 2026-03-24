@@ -3,6 +3,8 @@ database = 'kurucz' # Can be ['exomol', 'hitran', 'hitemp', 'kurucz']
 species  = 'k'      # Species name
 # mass = 39.0983     # Will be read from atoms_info.csv
 
+N_CPUs = 4 # Number of CPUs for parallelisation
+
 # Input/output-directories
 input_data_dir  = './examples/kurucz_k/input_data/'
 output_data_dir = './examples/kurucz_k/'
