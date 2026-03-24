@@ -768,7 +768,7 @@ class LineByLine(CrossSections, LineProfileHelper):
                 # Update the progress bar
                 postfix = {
                     'P': f'{P_i*1e-5:.0e} bar', 'T': f'{T_i:.0f} K',
-                    'N_lines_computed': f'{N_lines_computed_i:.0d}', 
+                    'N_lines_computed': f'{N_lines_computed_i:d}', 
                 }
                 pbar.set_postfix(**postfix, refresh=False)
                 pbar.update(1)
